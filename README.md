@@ -29,10 +29,63 @@ let translator {.used.} = Translator(
 )
 
 import "$nim"/compiler/renderer
-echo translator.translate(c).assemble().toPNode
+echo translator.translate(c).assemble(translator.imports).toPNode
 ```
 Output:
 ```nim
 type
   HelloWebidl = ref object of JsRoot
+```
+## Features
+#### import std lib modules that needed for definition.
+```webidl
+interface NumberWrapper {
+  attribute bigint num;
+};
+```
+Output:
+```nim
+import
+  std / jsbigints
+
+type
+  NumberWrapper = ref object of JsRoot
+    num* {.importc: "num".}: JsBigInt
+```
+#### automatically reorder code.
+```webidl
+interface NumberWrapper {
+  TypeFromFuture sum(short ...num);
+};
+
+typedef unsigned long type-from-future;
+```
+Output:
+```nim
+type
+  TypeFromFuture* = distinct uint32
+  NumberWrapper = ref object of JsRoot
+  
+proc sum*(self: NumberWrapper; num: varargs[int16]): TypeFromFuture {.importc: .}
+```
+#### method call syntax support (UFCS)
+```webidl
+interface NumberWrapper {
+  unsigned long long sum(short ...num);
+};
+```
+Output (with method call syntax):
+```nim
+type
+  NumberWrapper = ref object of JsRoot
+  
+proc sum*(self: NumberWrapper; num: varargs[int16]): uint64
+    {.importjs: "#.$1($2, $3)".}
+```
+Output (without method call syntax):
+```nim
+type
+  NumberWrapper = ref object of JsRoot
+  
+proc sum*(self: NumberWrapper; num: varargs[int16]): uint64 {.importc.}
 ```
