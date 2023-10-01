@@ -194,7 +194,6 @@ proc mixinStmt*(name: Node, members: openArray[Node]): Node =
   Node(kind: Mixin, sons: @[name] & members.toSeq)
 
 proc mixinMember*(member: Node): Node =
-  echo member.kind
   assert:
     member.kind in {ConstStmt, Stringifier, Stringifier} or
     member.kind == Operation and member.inner.kind == RegularOperation or

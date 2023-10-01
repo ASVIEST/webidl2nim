@@ -79,7 +79,27 @@ type
     name: string
     kind: NodeKind
     # ast: Node
+
+proc assemble*(decls: openArray[TranslatedDeclAssembly]): NimUNode =
+  let typeSect = unode(unkTypeSection)
+  let letSect = unode(unkLetSection)
+  var routines = seq[NimUNode].default
+
+  for i in decls:
+    typeSect.add i.declGenerated
+
+    for j in i.bindLets:
+      letSect.add j
     
+    for j in i.bindRoutines:
+      routines.add j
+  
+  result = unode(unkStmtList)
+  with result:
+    add typeSect
+    add letSect
+    add routines
+
 proc getAst*(cache: SymCache, s: Sym): Node =
   cache.idTable[s.id]
 
@@ -288,7 +308,6 @@ using opCtx: var OperationTranslationCtx
 
 proc translateSimpleArgument(self, opCtx; node: Node) =
   assert node.kind == SimpleArgument
-  echo node
 
   var result = self.translateIdentDefs node[0]
   result[0] = tryRemoveExportMarker result[0]
@@ -707,16 +726,10 @@ proc translatePartialInterface*(self; node: Node): TranslatedDeclAssembly =
           # we need to implement setlike methods
           discard
 
-        echo "setlike"
-        echo useSet
-        echo t.toPNode
-        # if node.sons == 
-
       else:
         discard
   
   let recList = unode(unkRecList).add(result.declFields)
-  # echo recList.toPNode
 
   result.declGenerated = genAlias(
     result.decl,
@@ -745,22 +758,9 @@ proc translateInterface*(self; node: Node): TranslatedDeclAssembly =
     n.add i
 
   for i in deps.includes:
-    echo i
     let mixinDeps = self.deps[i]
     for j in (mixinDeps.mixinMembers & mixinDeps.partialMembers):
       n.add j
-  
-  echo n.sons[2..^1]
-
-  # if n[1].kind != Empty:
-    
-
-  #   let inheritanceSym = self.findSym(node[1])
-  #   assert inheritanceSym.kind in {Interface, Mixin}
-  #   var node = self.symCache.getAst(inheritanceSym)
-  #   # inheritance inplace
-  #   for i in node.sons[2..^1]:
-  #     n.add i
   
   self.translatePartialInterface(n)
 
