@@ -47,7 +47,7 @@ type
   
   Translator* = ref object
     settings*: TranslatorSettings
-    imports: HashSet[string]
+    imports*: HashSet[string]
 
     symCache: SymCache # webidl syms
     deps: Table[string, DeclDeps[string]]
@@ -80,10 +80,11 @@ type
     kind: NodeKind
     # ast: Node
 
-proc assemble*(decls: openArray[TranslatedDeclAssembly]): NimUNode =
+proc assemble*(decls: openArray[TranslatedDeclAssembly], imports: HashSet[string]): NimUNode =
   let typeSect = unode(unkTypeSection)
   let letSect = unode(unkLetSection)
   var routines = seq[NimUNode].default
+  var imports = unode(unkImportStmt).add imports.mapIt(ident(it))
 
   for i in decls:
     typeSect.add i.declGenerated
@@ -96,9 +97,10 @@ proc assemble*(decls: openArray[TranslatedDeclAssembly]): NimUNode =
   
   result = unode(unkStmtList)
   with result:
-    add typeSect
-    add letSect
-    add routines
+    addIfNotEmpty imports
+    addIfNotEmpty typeSect
+    addIfNotEmpty letSect
+    addIfNotEmpty routines
 
 proc getAst*(cache: SymCache, s: Sym): Node =
   cache.idTable[s.id]

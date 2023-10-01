@@ -62,7 +62,13 @@ proc add*(father: NimUNode, children: varargs[NimUNode]): NimUNode {.discardable
   father.sons.add(children)
   result = father
 
+proc addIfNotEmpty*(self, son: NimUNode): NimUNode {.discardable.} =
+  if son.kind == unkEmpty: return self
+  self.add son
 
+proc addIfNotEmpty*(self: NimUNode, sons: openArray[NimUNode]): NimUNode {.discardable.} =
+  if self.kind == unkEmpty: return self
+  self.add sons
 
 func `[]`*(self: NimUNode, i: int): var NimUNode =
   self.sons[i]
