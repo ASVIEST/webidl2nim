@@ -470,9 +470,7 @@ proc translateNamespaceMember*(self, assembly; node: Node) =
             )
           )
         else:
-          fixedProcDef[4] = fixedProcDef[4].withPragma pragma unode(unkExprColonExpr).add(
-            ident"importc", empty()
-          )
+          fixedProcDef[4] = fixedProcDef[4].withPragma pragma ident"importc"
         
         assembly.bindRoutines.add fixedProcDef
 
@@ -677,9 +675,7 @@ proc translatePartialInterface*(self; node: Node): TranslatedDeclAssembly =
               )
             )
           else:
-            fixedProcDef[4] = fixedProcDef[4].withPragma pragma unode(unkExprColonExpr).add(
-              ident"importc", empty()
-            )
+            fixedProcDef[4] = fixedProcDef[4].withPragma pragma ident"importc"
           
           result.bindRoutines.add fixedProcDef
       

@@ -63,7 +63,8 @@ proc add*(father: NimUNode, children: varargs[NimUNode]): NimUNode {.discardable
   result = father
 
 proc addIfNotEmpty*(self, son: NimUNode): NimUNode {.discardable.} =
-  if son.kind == unkEmpty: return self
+  if son.kind == unkEmpty or 
+     (son.kind notin {unkCharLit..unkNilLit, unkIdent} and son.sons.len == 0): return self
   self.add son
 
 proc addIfNotEmpty*(self: NimUNode, sons: openArray[NimUNode]): NimUNode {.discardable.} =
