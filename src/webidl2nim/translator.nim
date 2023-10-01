@@ -1,0 +1,833 @@
+import unode
+import ast
+import translate_types_dsl
+
+import sequtils
+import strutils
+import strformat
+import sets
+import sugar
+import std/[with, tables, options]
+import deps
+import "$nim"/compiler/renderer
+from std/algorithm import SortOrder
+
+type
+  OptionalAttributePolicy* {.pure.} = enum
+    MakeNoVariardic
+    UseDefaultVal
+    GenDeferredProcs
+
+  ConstructorPolicy* {.pure.} = enum
+    InitTypedesc
+    InitName
+    NewName
+  
+  Feature* {.pure.} = enum
+    NamespaceJsFieldBinding
+    InterfaceJsFieldBinding
+
+    MethodCallSyntax
+
+    ImportJsToImportCpp    
+    JsRootToRootObj
+
+    ObjConstrRequired
+    ReadonlyAttributes
+
+  OnTypeDefProc* = (NimUNode, NimUNodeKind) -> NimUNode
+
+  TranslatorSettings* = object
+    onTypeDef*: OnTypeDefProc
+
+    optionalAttributePolicy*: OptionalAttributePolicy
+    constructorPolicy*: ConstructorPolicy
+    
+    features*: set[Feature]
+  
+  Translator* = ref object
+    settings*: TranslatorSettings
+    imports: HashSet[string]
+
+    symCache: SymCache # webidl syms
+    deps: Table[string, DeclDeps[string]]
+  
+  TranslatedDeclAssembly* = object
+    decl: NimUNode
+    declGenerated*: NimUNode
+    declFields*: seq[NimUNode]
+    
+    bindRoutines*: seq[NimUNode]
+    bindLets*    : seq[NimUNode] = @[]
+  
+  VariardicArg = tuple[
+    val: NimUNode,
+    isVariardic: bool
+  ]
+
+  OperationTranslationCtx* = object
+    args: seq[VariardicArg]
+  
+  SymCache = object
+    idTable: Table[int, Node]
+    nextId: int
+
+    symNames: Table[string, Sym]
+
+  Sym = ref object
+    id: int
+    name: string
+    kind: NodeKind
+    # ast: Node
+    
+proc getAst*(cache: SymCache, s: Sym): Node =
+  cache.idTable[s.id]
+
+proc newSym*(self: Translator, name: string = ""; assembly = Node(kind: Empty)): Sym =
+  result = Sym(
+    id: self.symCache.nextId,
+    name: name,
+    kind: assembly.kind
+    # ast: ast
+  )
+  self.symCache.symNames[name] = result
+  self.symCache.idTable[result.id] = assembly
+
+  inc self.symCache.nextId
+
+proc findSym*(self: Translator; name: string): Sym =
+  self.symCache.symNames[name]
+
+proc tryFindSym*(self: Translator; name: string): Option[Sym] =
+  if name in self.symCache.symNames:
+    some(self.findSym(name))
+  else:
+    none(Sym)
+
+proc findSym*(self: Translator; name: Node): Sym =
+  self.findSym(name.strVal)
+
+proc tryFindSym*(self: Translator; name: Node): Option[Sym] =
+  self.tryFindSym(name.strVal)
+
+translateTypesDsl toNimType:
+  undefined -> void
+
+  (ByteString, DOMString, USVString) -> cstring
+  boolean -> bool
+
+  byte -> int8
+  short -> int16
+  long -> int32#ident
+  (long long) -> int64#idents
+
+  octet -> byte
+  (unsigned short) -> uint16
+  (unsigned long) -> uint32#{usigned, short}, uint32
+  (unsigned long long) -> uint64
+
+  float -> float32
+
+
+  sequence[_] -> seq[_]
+  Promise[_]:
+    `import` std/asyncjs
+    -> PromiseJs[_]
+
+  bigint:
+    `import` std/jsbigints
+    -> JsBigInt
+  
+  undefined:
+    `import` std/jsffi
+    -> JsObject # we can't use undefined
+  
+  object:
+    `import` std/jsffi
+    -> JsObject
+  
+  Record:
+    #not tested with ffi
+    `import` std/tables
+    -> OrderedTable
+  
+  EventTarget:
+    `import` std/dom
+
+const
+  webidlNimIdents = [
+    "void", "string", "bool", "int8", "int16", "int32", "int64",
+    "byte", "uint16", "uint32", "uint64", "float32"
+  ]
+  sep = ", "
+
+proc genImportJsMethodPattern(argsNumbers: openArray[int], methodName = "$1"): string =
+  fmt"#.{methodName}({argsNumbers.map(x => '$' & $x).join(sep)})"
+
+proc genImportJsMethodPattern(argsCnt: int, methodName = "$1"): string =
+  genImportJsMethodPattern(
+    (2..argsCnt).toSeq,
+    methodName
+  )
+
+using
+  self: Translator
+  assembly: var TranslatedDeclAssembly
+
+proc jsRoot(self): auto =
+  if JsRootToRootObj in self.settings.features:
+    ident"RootObj"
+  else:
+    ident"JsRoot"
+
+proc importJs(self): auto =
+  if ImportJsToImportCpp in self.settings.features:
+    ident"importcpp"
+  else:
+    ident"importjs"
+
+proc toNimType*(self; n: Node): auto =
+  toNimType(n, self.imports)  
+
+proc translateIdent(self; node: Node): auto =
+  assert node.kind in {Ident, Empty}
+  if node.isEmpty:
+    return empty()
+
+  self.settings.onTypeDef(
+    ident node.strVal,
+    unkEmpty
+  )
+
+proc translateType*(self; node: Node, typeDefKind: NimUNodeKind = unkEmpty): auto =
+  assert node.kind == Type
+
+  var nimType = self.toNimType(node)
+
+  if node.kind != Ident or
+     (node.kind == Ident and node.strVal in webidlNimIdents):
+    return nimType
+
+  
+  self.settings.onTypeDef(
+    nimType,
+    typeDefKind
+  )
+
+proc translateEmpty(node: Node): auto =
+  assert node.kind == Empty
+  empty()
+
+proc translateIntLit(node: Node): auto =
+  assert node.kind == IntLit
+  intLit(node.intVal)
+
+proc translateStrLit(node: Node): auto =
+  assert node.kind == StrLit
+  strLit(node.strVal)
+
+proc translateFloatLit(node: Node): auto =
+  assert node.kind == FloatLit
+  floatLit(node.floatVal)
+
+proc translateBoolLit(node: Node): auto =
+  assert node.kind == BoolLit
+  
+  case node.boolVal:
+    of true: ident"true"
+    of false: ident"false"
+
+proc translateVal(self; node: Node): auto =
+  assert node.kind in {Empty, IntLit, FloatLit, BoolLit, StrLit}
+  case node.kind:
+    of Empty:
+      node.translateEmpty()
+    of IntLit:
+      node.translateIntLit()
+    of FloatLit:
+      node.translateFloatLit()
+    of BoolLit:
+      node.translateBoolLit()
+    of StrLit:
+      node.translateStrLit()
+    else:
+      raise newException(CatchableError, "Invalid node for val")
+
+
+
+proc translateIdentDefs(self; node: Node): auto =
+  assert node.kind == IdentDefs
+
+  let
+    name    = node[0]
+    t       = node[1]
+    default = node[2]
+  
+  unode(unkIdentDefs).add(
+    self.translateIdent name,
+    self.translateType t,
+    self.translateVal default
+  )
+
+proc translateAttribute(self; node: Node; hidden = false): auto =
+  assert node.kind == Attribute
+
+  let
+    name    = node[0]
+    t       = node[1]
+  
+  var identDefsName = self.translateIdent name
+
+  unode(unkIdentDefs).add(
+    identDefsName,
+    self.translateType t,
+    empty()
+  )
+
+using opCtx: var OperationTranslationCtx
+
+proc translateSimpleArgument(self, opCtx; node: Node) =
+  assert node.kind == SimpleArgument
+  echo node
+
+  var result = self.translateIdentDefs node[0]
+  result[0] = tryRemoveExportMarker result[0]
+
+  if node[1].kind == Ellipsis:
+    result[1] =
+      unode(unkBracketExpr)
+      .add(ident"varargs")
+      .add(result[1])
+  
+  opCtx.args.add (result, false)
+
+# type IdentDefsVariants = object
+proc translateOptionalArgument(self, opCtx;  node: Node) =
+  assert node.kind == OptionalArgument
+  let identDefs = node[0]
+  
+  
+  var result = (self.translateIdentDefs identDefs, false).VariardicArg
+  result[0][0] = tryRemoveExportMarker result[0][0]
+
+  if identDefs[2].isEmpty:
+    case self.settings.optionalAttributePolicy:
+      of MakeNoVariardic:
+        discard
+
+      of UseDefaultVal:
+        result[0][2] =
+          unode(unkDotExpr)
+          .add(self.translateType(identDefs[1], unkEmpty))
+          .add(ident"default")
+
+      of GenDeferredProcs:
+        result.isVariardic = true  
+  
+  opCtx.args.add result
+
+proc translateArgument(self, opCtx; node: Node) =
+  assert node.kind == Argument
+  case node[0].kind:
+    of SimpleArgument:
+      self.translateSimpleArgument(opCtx, node[0])
+    of OptionalArgument:
+      self.translateOptionalArgument(opCtx, node[0])
+    else:
+      raise newException(CatchableError, "Invalid argument")
+
+proc translateArgumentList(self; node: Node): auto =
+  # assert node.kind == ArgumentList
+  var ctx: OperationTranslationCtx
+  for i in node.sons:
+    self.translateArgument(ctx, i)
+  
+  var argLists: seq[seq[NimUNode]] = @[@[]]
+  for i in ctx.args:
+    # [a, b, c], [a, b], [a]
+
+    if i.isVariardic:
+      argLists.add argLists[0]
+    argLists[0].add i[0]
+
+  argLists
+
+# import print
+
+proc translateRegularOperation*(self, assembly; node: Node) =
+  assert node.kind == RegularOperation
+  let argLists = self.translateArgumentList node[2]
+
+  for argList in argLists:
+    assembly.bindRoutines.add genRoutine(
+        name = self.translateIdent node[0],
+        returnType = self.translateType node[1],
+        # pragmas = pragmas [pragma ident"importc"],
+        params = argList
+    )
+
+proc translateOperation*(self, assembly; node: Node) =
+  assert node.kind == Operation
+  case node[0].kind:
+    of RegularOperation:
+      self.translateRegularOperation(assembly, node[0])
+    else:
+      raise newException(CatchableError, "Invalid operation")
+
+proc setMethodBase*(m, base: NimUNode): auto =
+  var params = unode(unkFormalParams)
+  var p = m
+  with params:
+    add p[3][0]
+    add base
+    add p[3].sons[1..^1]
+
+  p[3] = params
+  p
+
+proc translateNamespaceMember*(self, assembly; node: Node) =
+  assert node.kind == NamespaceMember
+  
+  if NamespaceJsFieldBinding in self.settings.features:
+    # firstly trying to translate field as js
+    if node[0].kind == ConstStmt:
+      var identDefs = self.translateIdentDefs node[0][0]
+      identDefs[0] = identDefs[0].withPragma:
+        pragma unode(unkExprColonExpr).add(
+          ident "importc",
+          strLit node[0][0][0].strVal
+        )
+          
+      identDefs[2] = empty()
+      assembly.declFields.add identDefs
+      return
+
+    elif node[0].kind == Operation and not node[0].isVariardic and MethodCallSyntax notin self.settings.features:
+      self.translateOperation(assembly, node[0])
+      var op = assembly.bindRoutines.pop()
+      op[0] = empty() # clear name if generated
+      op[4] = empty() # clear pragmas if generated
+
+      var name = self.translateIdent(node[0].name)
+      name = name.withPragma pragma unode(unkExprColonExpr).add(
+        ident "importc",
+        strLit node[0].name.strVal
+      )
+      
+      assembly.declFields.add unode(unkIdentDefs).add(
+        name,
+        op,
+        empty()
+      )
+      return
+
+  let selfNode =
+    unode(unkIdentDefs).add(
+      ident"_",
+      unode(unkBracketExpr).add(
+        ident"typedesc",
+        assembly.decl
+      ),
+      empty()
+    )
+  
+  case node[0].kind:
+    of Operation:
+      var currentAssembly: TranslatedDeclAssembly
+      self.translateOperation(currentAssembly, node[0])
+      for procDef in currentAssembly.bindRoutines:
+        #TODO: method call syntax fix importjs
+        var fixedProcDef = procDef.setMethodBase(selfNode)
+        if MethodCallSyntax in self.settings.features:
+          fixedProcDef[4] = fixedProcDef[4].withPragma pragma unode(unkExprColonExpr).add(
+            self.importJs,
+            strLit(
+              if node.name.strVal == fixedProcDef[0].tryRemoveExportMarker.strVal:
+                genImportJsMethodPattern(procDef[3].sons.len)
+              else:
+                genImportJsMethodPattern(procDef[3].sons.len, node.name.strVal)
+            )
+          )
+        else:
+          fixedProcDef[4] = fixedProcDef[4].withPragma pragma unode(unkExprColonExpr).add(
+            ident"importc", empty()
+          )
+        
+        assembly.bindRoutines.add fixedProcDef
+
+    of ConstStmt:
+      var identDefs = node[0][0]
+
+      assembly.bindRoutines.add genRoutine(
+        name = self.translateIdent identDefs[0],
+        returnType = self.translateType identDefs[1],
+        params = [selfNode],
+        body = self.translateVal identDefs[2],
+        routineType = unkTemplateDef
+      )
+
+    of Readonly:
+      #TODO: maybe fix readonly ?
+      assert node[0][0].kind == Attribute
+      var attribute = node[0][0]
+
+      assembly.bindRoutines.add genRoutine(
+        name = self.translateIdent attribute[0],
+        returnType = self.translateType attribute[1],
+        params = [selfNode],
+        routineType = unkProcDef,
+        # pragmas = pragmas [pragma ident"importc"],
+      )
+
+    else:
+      raise newException(CatchableError, "Invalid namespace member")
+
+proc translateNamespace*(self; node: Node): TranslatedDeclAssembly =
+  # var result = TranslatedDeclAssembly.default
+  let t = self.translateIdent(node[0])
+
+  if NamespaceJsFieldBinding in self.settings.features:
+    let jsTypeName = ident tryRemoveExportMarker(t).strVal & "Impl"
+    result.decl = jsTypeName
+
+    for i in node.sons[1..^1]:
+      self.translateNamespaceMember(result, i)
+
+    let jsType = genAlias(
+      jsTypeName,
+      unode(unkRefTy).add unode(unkObjectTy).add(
+        empty(),
+        unode(unkOfInherit).add(self.jsRoot),
+        unode(unkRecList).add(result.declFields)
+      )
+    )
+    result.declGenerated = jsType
+    result.bindLets.add:
+      unode(unkIdentDefs).add(
+        t.withPragma pragma(
+          ident"importc",
+          ident"nodecl"
+        ),
+        jsTypeName,
+        empty(),  
+      )
+
+  else:
+    result.decl = t
+
+    for i in node.sons[1..^1]:
+      self.translateNamespaceMember(result, i)
+    
+    result.declGenerated = genDistinct(
+      t,
+      ident"void"
+    )
+
+# import ast_repr
+
+proc translatePartialDictionary(self; node: Node): TranslatedDeclAssembly =
+  # !Note: dictionary and partial dictionary is same
+  # ! (only difference is inference)
+
+  assert:
+    node.kind == Dictionary# and
+    # node[1].isEmpty # partial dictionary not support inference
+  
+  for i in node.sons[2..^1]:
+    let n = i.inner
+    var fieldPragmas = pragma(
+      ident"importc",
+      ident"nodecl"
+    )
+    if (
+      ObjConstrRequired in self.settings.features and
+      n.kind == Required
+    ): fieldPragmas.add(ident"requiresInit")
+        
+    var identDefs = self.translateIdentDefs(
+      n.skipNodes({Required})
+    )
+    identDefs[0] = identDefs[0].withPragma fieldPragmas
+    result.declFields.add identDefs
+
+  result.decl = self.translateIdent(node[0])
+  result.declGenerated = genAlias(
+    result.decl,
+    unode(unkRefTy).add unode(unkObjectTy).add(
+      empty(),
+      unode(unkOfInherit).add(self.jsRoot),
+      unode(unkRecList).add(result.declFields)
+    )
+  )
+
+proc translatePartialInterface*(self; node: Node): TranslatedDeclAssembly =
+  result.decl = tryRemoveExportMarker:
+    self.translateIdent(node[0])
+  
+  template makeField(attribute, node; hidden = false) =
+    var field = self.translateAttribute(attribute)
+    assert field.kind == unkIdentDefs
+    # TODO: make hidden works >_<
+    # if hidden: field[0] = tryRemoveExportMarker field[0]
+    field[0] = field[0].withPragma:
+      pragma unode(unkExprColonExpr).add(
+        ident "importc",
+        strLit node[0].strVal
+      )
+    result.declFields.add field
+
+  let selfTypedescNode =
+    unode(unkIdentDefs).add(
+      ident"_",
+      unode(unkBracketExpr).add(
+        ident"typedesc",
+        result.decl
+      ),
+      empty()
+  )
+  let selfNode =
+    unode(unkIdentDefs).add(
+      ident"self",
+      result.decl,
+      empty()
+  )
+  
+  for i in node.sons[2..^1]:
+    let n = i.inner
+    case n.kind:
+      of ConstStmt:
+        #TODO: add js way
+        var identDefs = n.inner
+
+        result.bindRoutines.add genRoutine(
+          name = self.translateIdent identDefs[0],
+          returnType = self.translateType identDefs[1],
+          params = [selfTypedescNode],
+          body = self.translateVal identDefs[2],
+          routineType = unkTemplateDef
+        )
+
+      of Readonly:
+        var attribute = n.inner
+        assert attribute.kind == Attribute
+
+        if ReadonlyAttributes in self.settings.features:
+          # type T = ref object of JsRoot
+          #   attrHidden: TT
+          # proc attr*(self: T) = self.attrHidden
+          assert attribute[0].kind == Ident
+
+          let procName = self.translateIdent attribute[0]
+          attribute.sons[0].strVal =
+            attribute[0].strVal & "_hidden"
+          # translateInterfaceField()
+          makeField(attribute, n.inner, true)
+          result.bindRoutines.add genRoutine(
+            name = procName,
+            returnType = tryRemoveExportMarker(
+              self.translateType attribute[1]
+            ),
+            params = [selfNode],
+            body = unode(unkDotExpr).add(
+              ident"self",
+              tryRemoveExportMarker self.translateIdent(attribute[0]),
+            ),
+            
+            routineType = unkProcDef
+          )
+        else: makeField(attribute, n.inner)
+      
+      of Attribute: makeField(n, n)
+
+      of Operation:
+        var currentAssembly: TranslatedDeclAssembly
+        self.translateOperation(currentAssembly, n)
+        for procDef in currentAssembly.bindRoutines:
+          #TODO: method call syntax fix importjs
+          var fixedProcDef = procDef.setMethodBase(selfNode)
+          if MethodCallSyntax in self.settings.features:
+            fixedProcDef[4] = fixedProcDef[4].withPragma pragma unode(unkExprColonExpr).add(
+              self.importJs,
+              strLit(
+                if n.name.strVal == fixedProcDef[0].tryRemoveExportMarker.strVal:
+                  genImportJsMethodPattern(procDef[3].sons.len)
+                else:
+                  genImportJsMethodPattern(procDef[3].sons.len, n.name.strVal)
+              )
+            )
+          else:
+            fixedProcDef[4] = fixedProcDef[4].withPragma pragma unode(unkExprColonExpr).add(
+              ident"importc", empty()
+            )
+          
+          result.bindRoutines.add fixedProcDef
+      
+      of Setlike:
+        let t = self.translateType n[1]
+        var useSet = t.isSimpleOrdinal
+        #TODO: add field intference support
+        #TODO: add typedef from ordinal support
+        if (
+          n[1].sons.len > 0 and n[1].inner.kind == Ident and
+          (let s = self.tryFindSym(n[1].inner); s).isSome and 
+          self.symCache.getAst(s.get()).kind == Enum
+        ): useSet = true
+
+        if t.strVal in [
+          "int32", 
+          "uint32", 
+          "int64", 
+          "uint64", 
+          "cint", 
+          "cuint", 
+          "clong",
+          "culong",
+          "clonglong",
+          "culonglong"
+        ]:
+          # ordinal types with more than 2^16 elements
+          useSet = false
+        if node.sons[2..^1].allIt(it.inner.kind in {Setlike, ConstStmt}):
+          # we can set result as set          
+          result.declGenerated = genAlias(
+            result.decl,
+            unode(unkBracketExpr).add(
+              (
+                if useSet: 
+                  ident"set" 
+                else:
+                  self.imports.incl "std/sets"
+                  ident"HashSet"
+              ),
+              t
+            )
+          )
+          return
+        else:
+          # we need to implement setlike methods
+          discard
+
+        echo "setlike"
+        echo useSet
+        echo t.toPNode
+        # if node.sons == 
+
+      else:
+        discard
+  
+  let recList = unode(unkRecList).add(result.declFields)
+  # echo recList.toPNode
+
+  result.declGenerated = genAlias(
+    result.decl,
+    unode(unkRefTy).add unode(unkObjectTy).add(
+      empty(),
+      unode(unkOfInherit).add(self.jsRoot),
+      recList
+    )
+  )
+
+proc translateInterface*(self; node: Node): TranslatedDeclAssembly =
+  assert node.kind == Interface
+  var n = node
+  let deps = self.deps[node.name.strVal]
+
+  if deps.inheritance.isSome:
+    let inheritanceSym = self.findSym(deps.inheritance.get())
+    assert inheritanceSym.kind == Interface
+    var node = self.symCache.getAst(inheritanceSym)
+    
+    # let inheritanceDeps 
+    for i in node.sons[2..^1]:# & self.deps[deps.inheritance.get]:
+      n.add i
+  
+  for i in deps.partialMembers:
+    n.add i
+
+  for i in deps.includes:
+    echo i
+    let mixinDeps = self.deps[i]
+    for j in (mixinDeps.mixinMembers & mixinDeps.partialMembers):
+      n.add j
+  
+  echo n.sons[2..^1]
+
+  # if n[1].kind != Empty:
+    
+
+  #   let inheritanceSym = self.findSym(node[1])
+  #   assert inheritanceSym.kind in {Interface, Mixin}
+  #   var node = self.symCache.getAst(inheritanceSym)
+  #   # inheritance inplace
+  #   for i in node.sons[2..^1]:
+  #     n.add i
+  
+  self.translatePartialInterface(n)
+
+proc translateTypedef(self; node: Node): TranslatedDeclAssembly =
+  result.decl = self.translateIdent node[0]
+  result.declGenerated = genDistinct(
+    result.decl,
+    self.translateType node[1]
+  )
+
+proc translateEnum*(self; node: Node): TranslatedDeclAssembly =
+  result.decl = self.translateIdent node[0]
+  result.declFields = node.sons[1..^1].mapIt:
+    tryRemoveExportMarker(
+      self.translateIdent Node(kind: Ident, strVal: it.strVal)
+    )
+  
+  result.declGenerated = genAlias(
+    result.decl,
+    unode(unkEnumTy).add unode(unkStmtList).add(result.declFields)
+  )
+
+# import ast_repr
+proc translate*(self; node: Node): TranslatedDeclAssembly =
+  result = case node.kind:
+    of Interface:
+      self.translateInterface(node)
+    of Dictionary:
+      self.translatePartialDictionary(node)
+    of Namespace:
+      self.translateNamespace(node)
+    of Typedef:
+      self.translateTypedef(node)
+    of Enum:
+      self.translateEnum(node)
+    else:
+      raise newException(CatchableError, "Invalid decl")
+
+  discard self.newSym(node.name.strVal, node)
+
+proc getInheritanceOrder*(nodes: seq[Node]; finder: var DepsFinder): seq[string] =
+  for i in nodes:
+    finder.findDeps(i)
+  
+  var ct = initCountTable[string]()
+  for i in finder.deps.keys:
+    finder.countDeps(i, ct)
+  ct.sort(Ascending)
+  ct.keys.toSeq()
+
+proc genDeclTable(nodes: seq[Node]): Table[string, Node] =
+  for i in nodes:
+    if i.kind in {Includes, Partial}:
+      continue
+    if i.kind == Empty:
+      # dirty hack. Empty must be not in nodes
+      continue
+
+    result[i.name.strVal] = i
+
+proc translate*(self; nodes: seq[Node]): seq[TranslatedDeclAssembly] =
+  var table = nodes.genDeclTable()
+  var finder = DepsFinder.init()
+  let order = getInheritanceOrder(nodes, finder)
+  self.deps = finder.deps
+  for i in order:
+    if table[i].kind in {Includes, Mixin, Partial}:
+      # no need to translate because it only changes exists defs
+      continue
+    result.add self.translate(table[i])
