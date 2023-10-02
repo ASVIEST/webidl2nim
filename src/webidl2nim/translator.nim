@@ -580,8 +580,7 @@ proc translatePartialDictionary(self; node: Node): TranslatedDeclAssembly =
   )
 
 proc translatePartialInterface*(self; node: Node): TranslatedDeclAssembly =
-  result.decl = tryRemoveExportMarker:
-    self.translateIdent(node[0])
+  result.decl = self.translateIdent(node[0])
   
   template makeField(attribute, node; hidden = false) =
     var field = self.translateAttribute(attribute)
