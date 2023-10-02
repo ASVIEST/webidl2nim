@@ -128,8 +128,12 @@ func nep1Rename(name: string, capitalize: bool): string {.discardable, inline.} 
   return res
 
 {.push inline.}
-func nep1Rename*(n: NimUNode, capitalize: static bool = true): NimUNode =
+func nep1Rename*(n: NimUNode, capitalize: static bool): NimUNode =
   ident nep1Rename(n.strVal, capitalize)
+
+func nep1Rename*(n: NimUNode): NimUNode =
+  ident nep1Rename(n.strVal, true)
+
 #   let n =
 #     unode(unkPostfix)
 #     .add(ident("*"))
