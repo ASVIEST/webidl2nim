@@ -41,7 +41,7 @@ echo translator.translate(c).assemble(translator.imports).toPNode
 Output:
 ```nim
 type
-  HelloWebidl = ref object of JsRoot
+  HelloWebidl* = ref object of JsRoot
 ```
 ## Features
 #### import std lib modules that needed for definition.
@@ -56,7 +56,7 @@ import
   std / jsbigints
 
 type
-  NumberWrapper = ref object of JsRoot
+  NumberWrapper* = ref object of JsRoot
     num* {.importc: "num".}: JsBigInt
 ```
 #### automatically reorder code.
@@ -71,7 +71,7 @@ Output:
 ```nim
 type
   TypeFromFuture* = distinct uint32
-  NumberWrapper = ref object of JsRoot
+  NumberWrapper* = ref object of JsRoot
   
 proc sum*(self: NumberWrapper; num: varargs[int16]): TypeFromFuture {.importc: .}
 ```
@@ -84,7 +84,7 @@ interface NumberWrapper {
 Output (with method call syntax):
 ```nim
 type
-  NumberWrapper = ref object of JsRoot
+  NumberWrapper* = ref object of JsRoot
   
 proc sum*(self: NumberWrapper; num: varargs[int16]): uint64
     {.importjs: "#.$1($2, $3)".}
@@ -92,7 +92,21 @@ proc sum*(self: NumberWrapper; num: varargs[int16]): uint64
 Output (without method call syntax):
 ```nim
 type
-  NumberWrapper = ref object of JsRoot
+  NumberWrapper* = ref object of JsRoot
   
 proc sum*(self: NumberWrapper; num: varargs[int16]): uint64 {.importc.}
 ```
+
+## Unsupported things:
+In webidl when value out of bounds of limited size types, value casting to type.
+```webidl
+[Exposed=Window]
+interface GraphicsContext {
+  undefined setColor(octet red, octet green, octet blue);
+};
+```
+```js
+var context = getGraphicsContext();
+context.setColor(-1, 255, 257); // it's equals to context.setColor(255, 255, 1)
+```
+It removes the benefits of static typing, so it unsupported.
