@@ -6,7 +6,7 @@ After installing you can just type:
 webidl2nim
 ```
 and translate code via cli
-
+![cli animation](./cli_anim.svg)
 ## Quickstart
 ```nim
 import webidl2nim
