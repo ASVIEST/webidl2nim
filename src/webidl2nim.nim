@@ -10,7 +10,7 @@ when isMainModule:
   # cli
   import std/[deques, sequtils, strutils, sugar, options, terminal]
   import pkg/[npeg, cligen]
-
+  import packages/docutils/highlite
   import "$nim"/compiler/renderer
 
   template writeColored(color: ForegroundColor, bright: bool = false, body: untyped) =
@@ -27,6 +27,34 @@ when isMainModule:
 
   proc writeSep() =
     stdout.writeLine "-".repeat(terminalWidth())
+  
+  template writeNimHighlight(code: string)=
+    var toknizr: GeneralTokenizer
+    initGeneralTokenizer(toknizr, code)
+    while true:
+      getNextToken(toknizr, langNim)
+      case toknizr.kind
+      of gtEof: break  # End Of File (or string)
+      of gtWhitespace:
+        stdout.resetAttributes()
+        stdout.write substr(code, toknizr.start, toknizr.length + toknizr.start - 1)
+      of gtOperator:
+        var s = substr(code, toknizr.start, toknizr.length + toknizr.start - 1)
+        
+        writeColored(if s == "*": fgRed else: fgYellow, s == "*"):
+          stdout.write substr(code, toknizr.start, toknizr.length + toknizr.start - 1)
+      of gtDecNumber..gtFloatNumber, gtValue:
+        writeColored(fgGreen, true):
+          stdout.write substr(code, toknizr.start, toknizr.length + toknizr.start - 1)
+      of gtKeyword:
+        writeColored(fgBlue, true):
+          stdout.write substr(code, toknizr.start, toknizr.length + toknizr.start - 1)
+      of gtComment, gtLongComment:
+        writeColored(fgBlack, true):
+          stdout.write substr(code, toknizr.start, toknizr.length + toknizr.start - 1)
+      else:
+        stdout.resetAttributes()
+        stdout.write substr(code, toknizr.start, toknizr.length + toknizr.start - 1)
 
   proc cli(
     features: set[Feature] = {}, 
@@ -79,7 +107,8 @@ when isMainModule:
         writeSep()
         writeCenter "Output Nim code: "
         writeSep()
-      stdout.write rendered
+      writeNimHighlight(rendered)
+      # stdout.write rendered
     else:
       renderModule(outNode, outputFile, {})
       writeColored(fgYellow, false):
@@ -94,7 +123,8 @@ when isMainModule:
       if cliOutFileListing != 0:
         var i = 0
         for line in splitLines(rendered):
-          stdout.writeLine line
+          writeNimHighlight line
+          stdout.write "\n"
           if i == cliOutFileListing:
             break
           inc i
