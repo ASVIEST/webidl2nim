@@ -11,7 +11,7 @@ bin           = @["webidl2nim"]
 
 # Dependencies
 
-requires "nim >= 2.1.1"
+requires "nim >= 1.9.1"
 requires "regex"
 requires "npeg"
 requires "cligen"
