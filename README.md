@@ -1,5 +1,12 @@
 # webidl2nim
 Tool to translate webidl code to Nim (js target).
+## Cli
+After installing you can just type:
+```bash
+webidl2nim
+```
+and translate code via cli
+
 ## Quickstart
 ```nim
 import webidl2nim
