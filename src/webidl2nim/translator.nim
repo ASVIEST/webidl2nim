@@ -599,14 +599,14 @@ proc translatePartialInterface*(self; node: Node): TranslatedDeclAssembly =
       ident"_",
       unode(unkBracketExpr).add(
         ident"typedesc",
-        result.decl
+        tryRemoveExportMarker result.decl
       ),
       empty()
   )
   let selfNode =
     unode(unkIdentDefs).add(
       ident"self",
-      result.decl,
+      tryRemoveExportMarker result.decl,
       empty()
   )
   
