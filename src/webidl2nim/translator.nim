@@ -722,6 +722,38 @@ proc translatePartialInterface*(self; node: Node): TranslatedDeclAssembly =
           self.translateType n.inner[1]
         ): result.bindRoutines.add i
 
+      of Constructor:
+        # we maybe in not partial interface
+        for argList in self.translateArgumentList(n.inner):
+          let pragma = pragma unode(unkExprColonExpr).add(
+            self.importJs,
+            strLit do:
+              "(new " & node[0].strVal & "(@))"
+          )
+          result.bindRoutines.add:
+            case self.settings.constructorPolicy:
+              of InitTypedesc:
+                genRoutine(
+                  name = ident"init",
+                  returnType = tryRemoveExportMarker result.decl,
+                  pragmas = pragma,
+                  params = selfTypedescNode & argList
+                )
+              of InitName, NewName:
+                genRoutine(
+                  name = ident(
+                    (
+                    if self.settings.constructorPolicy == InitName:
+                      "init"
+                    else:
+                      "new"
+                    ) & (tryRemoveExportMarker result.decl).strVal
+                  ),
+                  returnType = tryRemoveExportMarker result.decl,
+                  pragmas = pragma,
+                  params = selfTypedescNode & argList
+                )
+
       else:
         discard
   

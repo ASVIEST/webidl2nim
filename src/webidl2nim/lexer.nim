@@ -61,7 +61,7 @@ proc tryParseKeyword(self: var Lexer; s: string): Option[Token]=
   for (keyword, token) in static(keywords):
     if self.cmpStrings(s, keyword):
       if s.len > self.buffPos + keyword.len and s[self.buffPos + keyword.len] in alpha:
-        return
+        continue
 
       self.buffPos += keyword.len
       return some(Token(kind: token))

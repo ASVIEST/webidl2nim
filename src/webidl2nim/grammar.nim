@@ -434,7 +434,8 @@ grammar async_iterable:
   AsyncIterable <- [tAsync] * iterable.Iterable * ?([tLPar] * arguments.ArgumentList * [tRPar])
 
 grammar constructor:
-  Constructor <- [tConstructor] * [tLPar] * arguments.ArgumentList * [tRPar]
+  Constructor <- [tConstructor] * [tLPar] * arguments.ArgumentList * [tRPar] * [tSemiColon]:
+    capture constructor(p.pop())
 
 grammar operations:
     Operation <- (
