@@ -303,7 +303,7 @@ proc translateIdentDefs(self; node: Node): auto =
       self.translateVal default
   )
 
-proc translateAttribute(self; node: Node; hidden = false): auto =
+proc translateAttribute(self; node: Node): auto =
   assert node.kind == Attribute
 
   let

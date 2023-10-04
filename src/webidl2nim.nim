@@ -57,7 +57,10 @@ when isMainModule:
         stdout.write substr(code, toknizr.start, toknizr.length + toknizr.start - 1)
 
   proc cli(
-    features: set[Feature] = {}, 
+    features: set[Feature] = {
+      ReadonlyAttributes, MethodCallSyntax, 
+      ObjConstrRequired, NamespaceJsFieldBinding
+    }, 
     outputFile = "stdout", 
     inputFile = "stdin",
     nep1 = true,
