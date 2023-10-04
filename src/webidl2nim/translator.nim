@@ -649,7 +649,11 @@ proc translatePartialInterface*(self; node: Node): TranslatedDeclAssembly =
 
 
           of Maplike:
-            discard
+            for i in readonlyMaplike(
+              true,
+              tryRemoveExportMarker result.decl, 
+              self.translateType n.inner[1]
+            ): result.bindRoutines.add i
 
           of Attribute:
             var attribute = n.inner
@@ -709,6 +713,13 @@ proc translatePartialInterface*(self; node: Node): TranslatedDeclAssembly =
           true,
           tryRemoveExportMarker result.decl, 
           self.translateType n[1]
+        ): result.bindRoutines.add i
+      
+      of Maplike:
+        for i in maplike(
+          true,
+          tryRemoveExportMarker result.decl,
+          self.translateType n.inner[1]
         ): result.bindRoutines.add i
 
       else:

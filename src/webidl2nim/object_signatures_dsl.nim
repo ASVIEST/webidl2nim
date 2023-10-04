@@ -1,11 +1,13 @@
 import macros, sequtils, strutils, sugar#, unode
 
-proc processProc(i: NimNode): NimNode=
+proc processProc(i: NimNode, gp: seq[string]): NimNode=
   let name = newStrLitNode i[0].repr
   let ident = ident"ident"
 
   let params = i.params[1..^1]
-  let returnType = i.params[0]
+  var returnType = i.params[0]
+  # if returnType in gp:
+
 
   var paramsFlatten = newNimNode(nnkFormalParams)
   for i in params:
@@ -50,9 +52,12 @@ proc processProc(i: NimNode): NimNode=
     )
 
   if returnType.kind != nnkEmpty:
-    let rtS = newStrLitNode(returnType.strVal)
-    let rt = quote: `ident`(`rtS`)
-    result.add rt
+    result.add:
+      if returnType.kind == nnkIdent and returnType.strVal in gp:
+        quote: `returnType`
+      else:
+        let rtS = newStrLitNode(returnType.repr)
+        quote: `ident`(`rtS`)
   else:
     result.add quote do: empty()
   
@@ -62,11 +67,12 @@ proc processProc(i: NimNode): NimNode=
     unode(unkPragma).add(`pragma`)
 
 macro signature*(name, body):untyped=
-  let paramsStr = "self" & name[1..^1].mapIt(it.strVal)
+  var gp = name[1..^1].mapIt(it.strVal)
+  let paramsStr = "self" & gp
   var iteratorBody = newStmtList()
 
   for i in body:
-    iteratorBody.add newNimNode(nnkYieldStmt).add(i.processProc)
+    iteratorBody.add newNimNode(nnkYieldStmt).add(i.processProc(gp))
   
   var params = collect:
     for i in paramsStr:

@@ -110,7 +110,17 @@ iterator lex(self: var Lexer; s: string): Token =
     elif (let comment = self.tryParseRegex(s, reTokens.comment); comment).isSome:
       discard
     else:
-      raise newException(CatchableError, "Lexing error")
+      var (ln, col) = (0, 0)
+      var pos = 0
+      for i in s:
+        if i == '\n':
+          inc ln
+          col = 0
+        
+        if pos == self.buffPos: break
+        inc pos
+        
+      raise newException(CatchableError, "Lexing error at " & "Ln " & $ln & ", Col " & $col)
 
     # if 
 
