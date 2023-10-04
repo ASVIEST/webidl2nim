@@ -532,9 +532,10 @@ grammar dictionary:
     )
 
   DictionaryMembers <- *(extended_attributes.ExtendedAttributeList * MemberRest)
-  MemberRest <-
+  MemberRest <- (
     RequiredMember |
     TypeMember
+  ): capture dictionaryMember(p.pop())
   
   TypeMember <- types.Type * >[tIdentifier] * default.Default * [tSemiColon]:
     let (default, t) =
@@ -544,9 +545,10 @@ grammar dictionary:
       else:
         (p.pop(), p.pop())
 
-    capture dictionaryMember identDefs(ident($ $1), t, default)
+    capture identDefs(ident($ $1), t, default)
   RequiredMember <-
-    ([tRequired] * types.TypeWithExtendedAttributes * >[tIdentifier] * [tSemiColon])
+    ([tRequired] * types.TypeWithExtendedAttributes * >[tIdentifier] * [tSemiColon]):
+      capture required identDefs(ident($ $1), p.pop())
 
 grammar enums:
   Enum <- (

@@ -150,6 +150,7 @@ translateTypesDsl toNimType:
   (unsigned long long) -> uint64
 
   float -> float32
+  double -> float64
 
 
   sequence[_] -> seq[_]
@@ -180,7 +181,7 @@ translateTypesDsl toNimType:
 const
   webidlNimIdents = [
     "void", "string", "bool", "int8", "int16", "int32", "int64",
-    "byte", "uint16", "uint32", "uint64", "float32", "cstring"
+    "byte", "uint16", "uint32", "uint64", "float32", "float64", "cstring"
   ]
   sep = ", "
 
@@ -781,7 +782,7 @@ proc translate*(self; node: Node): TranslatedDeclAssembly =
     of Enum:
       self.translateEnum(node)
     else:
-      raise newException(CatchableError, "Invalid decl")
+      raise newException(CatchableError, "Invalid decl:  " & $node)
 
   discard self.newSym(node.name.strVal, node)
 

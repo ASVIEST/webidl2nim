@@ -103,6 +103,9 @@ proc updateUsedTypes(node: Node, deps: var DeclDeps[string]) =
         # User defined types can be only idents
         deps.usedTypes.incl i.strVal
 
+    of Required:
+      updateUsedTypes(node.inner, deps)
+
     else:
       discard
 
