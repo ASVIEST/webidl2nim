@@ -10,6 +10,7 @@ import sugar
 import std/[with, tables, options]
 import deps
 import "$nim"/compiler/renderer
+import object_signatures
 from std/algorithm import SortOrder
 
 type
@@ -179,7 +180,7 @@ translateTypesDsl toNimType:
 const
   webidlNimIdents = [
     "void", "string", "bool", "int8", "int16", "int32", "int64",
-    "byte", "uint16", "uint32", "uint64", "float32"
+    "byte", "uint16", "uint32", "uint64", "float32", "cstring"
   ]
   sep = ", "
 
@@ -232,8 +233,7 @@ proc translateType*(self; node: Node, typeDefKind: NimUNodeKind = unkEmpty): aut
 
   var nimType = self.toNimType(node)
 
-  if node.inner.kind != Ident or
-     (node.inner.kind == Ident and node.inner.strVal in webidlNimIdents):
+  if node.inner.kind != Ident or nimType.strVal in webidlNimIdents:
     return nimType
 
   tryRemoveExportMarker self.settings.onIdent(
@@ -640,7 +640,12 @@ proc translatePartialInterface*(self; node: Node): TranslatedDeclAssembly =
       of Readonly:
         case n.inner.kind:
           of Setlike:
-            discard
+            for i in readonlySetlike(
+              true,
+              tryRemoveExportMarker result.decl, 
+              self.translateType n.inner[1]
+            ): result.bindRoutines.add i
+
 
           of Maplike:
             discard
@@ -699,51 +704,11 @@ proc translatePartialInterface*(self; node: Node): TranslatedDeclAssembly =
           result.bindRoutines.add fixedProcDef
       
       of Setlike:
-        # Setlike interfaces must not have any 
-        # attributes, constants, or regular operations 
-        let t = self.translateType n[1]
-        var useSet = t.isSimpleOrdinal
-        #TODO: add field intference support
-        #TODO: add typedef from ordinal support
-        if (
-          n[1].sons.len > 0 and n[1].inner.kind == Ident and
-          (let s = self.tryFindSym(n[1].inner); s).isSome and 
-          self.symCache.getAst(s.get()).kind == Enum
-        ): useSet = true
-
-        if t.strVal in [
-          "int32", 
-          "uint32", 
-          "int64", 
-          "uint64", 
-          "cint", 
-          "cuint", 
-          "clong",
-          "culong",
-          "clonglong",
-          "culonglong"
-        ]:
-          # ordinal types with more than 2^16 elements
-          useSet = false
-        if node.sons[2..^1].allIt(it.inner.kind in {Setlike, ConstStmt}):
-          # we can set result as set          
-          result.declGenerated = genAlias(
-            result.decl,
-            unode(unkBracketExpr).add(
-              (
-                if useSet: 
-                  ident"set" 
-                else:
-                  self.imports.incl "std/sets"
-                  ident"HashSet"
-              ),
-              t
-            )
-          )
-          return
-        else:
-          # we need to implement setlike methods
-          discard
+        for i in setlike(
+          true,
+          tryRemoveExportMarker result.decl, 
+          self.translateType n[1]
+        ): result.bindRoutines.add i
 
       else:
         discard
