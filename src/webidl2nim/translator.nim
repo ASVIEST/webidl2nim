@@ -35,10 +35,10 @@ type
     ObjConstrRequired
     ReadonlyAttributes
 
-  OnTypeDefProc* = (NimUNode, NimUNodeKind) -> NimUNode
+  OnIdentProc* = (NimUNode, bool) -> NimUNode
 
   TranslatorSettings* = object
-    onTypeDef*: OnTypeDefProc
+    onIdent*: OnIdentProc
 
     optionalAttributePolicy*: OptionalAttributePolicy
     constructorPolicy*: ConstructorPolicy
@@ -211,29 +211,34 @@ proc importJs(self): auto =
 proc toNimType*(self; n: Node): auto =
   toNimType(n, self.imports)  
 
-proc translateIdent(self; node: Node): auto =
+proc translateIdentImpl(self; node: Node, capitalize: bool): auto =
   assert node.kind in {Ident, Empty}
   if node.isEmpty:
     return empty()
 
-  self.settings.onTypeDef(
+  self.settings.onIdent(
     ident node.strVal,
-    unkEmpty
+    capitalize
   )
+
+proc translateIdent(self; node: Node): auto =
+  translateIdentImpl(self, node, false)
+
+proc translateDeclIdent(self; node: Node): auto =
+  translateIdentImpl(self, node, true)
 
 proc translateType*(self; node: Node, typeDefKind: NimUNodeKind = unkEmpty): auto =
   assert node.kind == Type
 
   var nimType = self.toNimType(node)
 
-  if node.kind != Ident or
-     (node.kind == Ident and node.strVal in webidlNimIdents):
+  if node.inner.kind != Ident or
+     (node.inner.kind == Ident and node.inner.strVal in webidlNimIdents):
     return nimType
 
-  
-  self.settings.onTypeDef(
+  tryRemoveExportMarker self.settings.onIdent(
     nimType,
-    typeDefKind
+    true
   )
 
 proc translateEmpty(node: Node): auto =
@@ -293,7 +298,7 @@ proc translateIdentDefs(self; node: Node): auto =
     if default.kind == StrLit and t.inner.kind == Ident and t.inner.strVal notin anyStr:
       #? maybe need to raise exception if t is not enum ?
       tryRemoveExportMarker:
-        self.translateIdent Node(kind: Ident, strVal: default.strVal)
+        self.translateDeclIdent Node(kind: Ident, strVal: default.strVal)
     else:
       self.translateVal default
   )
@@ -510,7 +515,7 @@ proc translateNamespaceMember*(self, assembly; node: Node) =
 
 proc translateNamespace*(self; node: Node): TranslatedDeclAssembly =
   # var result = TranslatedDeclAssembly.default
-  let t = self.translateIdent(node[0])
+  let t = self.translateDeclIdent(node[0])
 
   if NamespaceJsFieldBinding in self.settings.features:
     let jsTypeName = ident tryRemoveExportMarker(t).strVal & "Impl"
@@ -576,7 +581,7 @@ proc translatePartialDictionary(self; node: Node): TranslatedDeclAssembly =
     identDefs[0] = identDefs[0].withPragma fieldPragmas
     result.declFields.add identDefs
 
-  result.decl = self.translateIdent(node[0])
+  result.decl = self.translateDeclIdent(node[0])
   result.declGenerated = genAlias(
     result.decl,
     unode(unkRefTy).add unode(unkObjectTy).add(
@@ -587,7 +592,7 @@ proc translatePartialDictionary(self; node: Node): TranslatedDeclAssembly =
   )
 
 proc translatePartialInterface*(self; node: Node): TranslatedDeclAssembly =
-  result.decl = self.translateIdent(node[0])
+  result.decl = self.translateDeclIdent(node[0])
   
   template makeField(attribute, node; hidden = false) =
     var field = self.translateAttribute(attribute)
@@ -779,17 +784,17 @@ proc translateInterface*(self; node: Node): TranslatedDeclAssembly =
   self.translatePartialInterface(n)
 
 proc translateTypedef(self; node: Node): TranslatedDeclAssembly =
-  result.decl = self.translateIdent node[0]
+  result.decl = self.translateDeclIdent node[0]
   result.declGenerated = genDistinct(
     result.decl,
     self.translateType node[1]
   )
 
 proc translateEnum*(self; node: Node): TranslatedDeclAssembly =
-  result.decl = self.translateIdent node[0]
+  result.decl = self.translateDeclIdent node[0]
   result.declFields = node.sons[1..^1].mapIt:
     tryRemoveExportMarker(
-      self.translateIdent Node(kind: Ident, strVal: it.strVal)
+      self.translateDeclIdent Node(kind: Ident, strVal: it.strVal)
     )
   
   result.declGenerated = genAlias(

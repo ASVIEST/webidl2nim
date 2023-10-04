@@ -111,10 +111,8 @@ func nep1Rename(name: string, capitalize: bool): string {.discardable, inline.} 
   if result[0] == '-':
     result = result[1..^1]
 
-  # if capitalize:
-  #   result = result.capitalizeAscii
-  # else:
-  #   result[0] = result[0].toLowerAscii
+  if capitalize:
+    result[0] = result[0].toUpperAscii
 
   var res: string
   for i in 0..<result.high:
@@ -128,7 +126,7 @@ func nep1Rename(name: string, capitalize: bool): string {.discardable, inline.} 
   return res
 
 {.push inline.}
-func nep1Rename*(n: NimUNode, capitalize: static bool): NimUNode =
+func nep1Rename*(n: NimUNode, capitalize: bool): NimUNode =
   ident nep1Rename(n.strVal, capitalize)
 
 func nep1Rename*(n: NimUNode): NimUNode =

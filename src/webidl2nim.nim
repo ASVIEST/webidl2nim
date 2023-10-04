@@ -93,9 +93,9 @@ when isMainModule:
       settings: TranslatorSettings(
         optionalAttributePolicy: optionalAttributePolicy,
         features: features,
-        onTypeDef: (node: NimUNode, typeDefKind: NimUNodeKind) =>
+        onIdent: (node: NimUNode, isDecl: bool) =>
           node
-          .applyOn(nep1, nep1Rename)
+          .applyOn(nep1, (node: NimUNode) => nep1Rename(node, isDecl))
           .applyOn(exportCode, makePublic)
       ),
     )
