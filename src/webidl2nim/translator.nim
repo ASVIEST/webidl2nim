@@ -246,6 +246,7 @@ proc translateIntLit(node: Node): auto =
 
 proc translateStrLit(node: Node): auto =
   assert node.kind == StrLit
+  echo node.strVal
   strLit(node.strVal)
 
 proc translateFloatLit(node: Node): auto =
@@ -279,6 +280,7 @@ proc translateVal(self; node: Node): auto =
 
 proc translateIdentDefs(self; node: Node): auto =
   assert node.kind == IdentDefs
+  const anyStr = ["ByteString", "DOMString", "USVString"]
 
   let
     name    = node[0]
@@ -288,7 +290,12 @@ proc translateIdentDefs(self; node: Node): auto =
   unode(unkIdentDefs).add(
     self.translateIdent name,
     self.translateType t,
-    self.translateVal default
+    if default.kind == StrLit and t.inner.kind == Ident and t.inner.strVal notin anyStr:
+      #? maybe need to raise exception if t is not enum ?
+      tryRemoveExportMarker:
+        self.translateIdent Node(kind: Ident, strVal: default.strVal)
+    else:
+      self.translateVal default
   )
 
 proc translateAttribute(self; node: Node; hidden = false): auto =
@@ -626,34 +633,42 @@ proc translatePartialInterface*(self; node: Node): TranslatedDeclAssembly =
         )
 
       of Readonly:
-        var attribute = n.inner
-        assert attribute.kind == Attribute
+        case n.inner.kind:
+          of Setlike:
+            discard
 
-        if ReadonlyAttributes in self.settings.features:
-          # type T = ref object of JsRoot
-          #   attrHidden: TT
-          # proc attr*(self: T) = self.attrHidden
-          assert attribute[0].kind == Ident
+          of Maplike:
+            discard
 
-          let procName = self.translateIdent attribute[0]
-          attribute.sons[0].strVal =
-            attribute[0].strVal & "_hidden"
-          # translateInterfaceField()
-          makeField(attribute, n.inner, true)
-          result.bindRoutines.add genRoutine(
-            name = procName,
-            returnType = tryRemoveExportMarker(
-              self.translateType attribute[1]
-            ),
-            params = [selfNode],
-            body = unode(unkDotExpr).add(
-              ident"self",
-              tryRemoveExportMarker self.translateIdent(attribute[0]),
-            ),
-            
-            routineType = unkProcDef
-          )
-        else: makeField(attribute, n.inner)
+          of Attribute:
+            var attribute = n.inner
+            if ReadonlyAttributes in self.settings.features:
+              # type T = ref object of JsRoot
+              #   attrHidden: TT
+              # proc attr*(self: T) = self.attrHidden
+              assert attribute[0].kind == Ident
+
+              let procName = self.translateIdent attribute[0]
+              attribute.sons[0].strVal =
+                attribute[0].strVal & "_hidden"
+
+              makeField(attribute, n.inner, true)
+              result.bindRoutines.add genRoutine(
+                name = procName,
+                returnType = tryRemoveExportMarker(
+                  self.translateType attribute[1]
+                ),
+                params = [selfNode],
+                body = unode(unkDotExpr).add(
+                  ident"self",
+                  tryRemoveExportMarker self.translateIdent(attribute[0]),
+                ),
+                
+                routineType = unkProcDef
+              )
+            else: makeField(attribute, n.inner)
+          else:
+            raise newException(CatchableError, "Invalid readonly")
       
       of Attribute: makeField(n, n)
 
@@ -679,6 +694,8 @@ proc translatePartialInterface*(self; node: Node): TranslatedDeclAssembly =
           result.bindRoutines.add fixedProcDef
       
       of Setlike:
+        # Setlike interfaces must not have any 
+        # attributes, constants, or regular operations 
         let t = self.translateType n[1]
         var useSet = t.isSimpleOrdinal
         #TODO: add field intference support

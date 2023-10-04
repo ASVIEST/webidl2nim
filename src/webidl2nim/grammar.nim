@@ -510,7 +510,7 @@ grammar default:
     [tUndefined]
   
   DefaultString <- >[tString]:
-    capture strLit($ $1)
+    capture strLit ($1).strVal
 
 grammar dictionary:
   PartialDictionary <- ([tDictionary] * >[tIdentifier] * [tLCurly] * DictionaryMembers * [tRCurly] * [tSemiColon]):
