@@ -47,12 +47,30 @@ type
       else:
         sons*: seq[NimUNode]
 
+const nimKeywords = [
+  "addr", "and", "as", "asm", "bind", "block", 
+  "break", "case", "cast", "concept", "const", 
+  "continue", "converter", "defer", "discard", 
+  "distinct", "div", "do", "elif", "else", "end", 
+  "enum", "except", "export", "finally", "for", 
+  "from", "func", "if", "import", "in", "include", 
+  "interface", "is", "isnot", "iterator", "let", "macro", 
+  "method", "mixin", "mod", "nil", "not", "notin", "object", 
+  "of", "or", "out", "proc", "ptr", "raise", "ref", "return", 
+  "shl", "shr", "static", "template", "try", "tuple", 
+  "type", "using", "var", "when", "while", "xor", "yield"
+]
+
 {.push inline.}
 
 func len*(node: NimUNode): int = node.sons.len
 
 func unode*(kind: NimUNodeKind): NimUNode=
   NimUNode(kind: kind)
+
+proc skipNodes*(n: NimUNode, kinds: set[NimUNodeKind]): NimUNode =
+  result = n
+  while result.kind in kinds: result = result.sons[0]
 
 proc add*(self, son: NimUNode): NimUNode {.discardable.} =
   self.sons.add(son)
@@ -110,6 +128,8 @@ func nep1Rename(name: string, capitalize: bool): string {.discardable, inline.} 
 
   if result[0] == '-':
     result = result[1..^1]
+  elif result[0] in {'0'..'9'}:
+    result = "n_" & result
 
   if capitalize:
     result[0] = result[0].toUpperAscii
@@ -131,6 +151,23 @@ func nep1Rename*(n: NimUNode, capitalize: bool): NimUNode =
 
 func nep1Rename*(n: NimUNode): NimUNode =
   ident nep1Rename(n.strVal, true)
+
+proc `~=`(a, b: string): bool =
+  a[0] == b[0] and
+    a.replace("_", "").toLowerAscii == b.replace("_", "").toLowerAscii
+
+func keywordToAccQuoted*(n: NimUNode): NimUNode =
+  var isKeyword = false
+  for i in nimKeywords:
+    if n.strVal ~= i:
+      isKeyword = true
+      break
+
+  if isKeyword:
+    unode(unkAccQuoted).add(n)
+    # n
+  else:
+    n
 
 #   let n =
 #     unode(unkPostfix)

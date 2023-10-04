@@ -300,6 +300,12 @@ proc translateIdentDefs(self; node: Node): auto =
       #? maybe need to raise exception if t is not enum ?
       tryRemoveExportMarker:
         self.translateDeclIdent Node(kind: Ident, strVal: default.strVal)
+    elif default.kind in {IntLit, Ident} and t.inner.kind == Ident and t.inner.strVal notin anyStr:
+      #? maybe need to raise exception if t is not distinct ?
+      unode(unkCall).add(
+        self.translateType t,
+        self.translateVal default
+      )
     else:
       self.translateVal default
   )
@@ -694,7 +700,7 @@ proc translatePartialInterface*(self; node: Node): TranslatedDeclAssembly =
             fixedProcDef[4] = fixedProcDef[4].withPragma pragma unode(unkExprColonExpr).add(
               self.importJs,
               strLit(
-                if n.name.strVal == fixedProcDef[0].tryRemoveExportMarker.strVal:
+                if n.name.strVal == fixedProcDef[0].tryRemoveExportMarker.skipNodes({unkAccQuoted}).strVal:
                   genImportJsMethodPattern(procDef[3].sons.len)
                 else:
                   genImportJsMethodPattern(procDef[3].sons.len, n.name.strVal)
