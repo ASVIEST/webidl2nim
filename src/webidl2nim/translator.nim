@@ -567,10 +567,7 @@ proc translatePartialDictionary(self; node: Node): TranslatedDeclAssembly =
   
   for i in node.sons[2..^1]:
     let n = i.inner
-    var fieldPragmas = pragma(
-      ident"importc",
-      ident"nodecl"
-    )
+    var fieldPragmas = pragma(ident"importc")
     if (
       ObjConstrRequired in self.settings.features and
       n.kind == Required
