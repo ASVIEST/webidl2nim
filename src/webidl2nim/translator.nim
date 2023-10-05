@@ -757,8 +757,28 @@ proc translatePartialInterface*(self; node: Node): TranslatedDeclAssembly =
                   params = selfTypedescNode & argList
                 )
 
+      of Stringifier:
+        if n.sons.len > 0 and n.inner.kind == Attribute:
+          makeField(n.inner, n.inner)
+          result.bindRoutines.add genRoutine(
+            name = unode(unkAccQuoted).add(ident"$"),
+            returnType = ident"string",
+            params = [selfNode],
+            body = unode(unkDotExpr).add(
+              ident"self", 
+              tryRemoveExportMarker self.translateIdent n.inner[0]
+            )
+          )
       else:
-        discard
+        result.bindRoutines.add genRoutine(
+          name = unode(unkAccQuoted).add(ident"$"),
+          returnType = ident"string",
+          params = [selfNode],
+          pragmas = pragma unode(unkExprColonExpr).add(
+            self.importJs,
+            strLit"#.toString()"
+          )
+        )
   
   let recList = unode(unkRecList).add(result.declFields)
 

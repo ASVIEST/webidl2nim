@@ -99,6 +99,7 @@ when isMainModule:
         onIdent: (node: NimUNode, isDecl: bool) =>
           node
           .applyOn(nep1, (node: NimUNode) => nep1Rename(node, isDecl))
+          .keywordToAccQuoted()
           .applyOn(exportCode, makePublic)
       ),
     )

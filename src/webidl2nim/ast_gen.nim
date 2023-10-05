@@ -71,6 +71,10 @@ func constStmt*(identDefs: Node): Node=
 
   Node(kind: ConstStmt, sons: @[identDefs])
 
+func constructor*(args: Node): Node=
+  assert args.kind == ArgumentList
+  Node(kind: Constructor, sons: @[args])
+
 func optionalArgument*(identDefs: Node): Node=
   assert identDefs.kind == IdentDefs
   Node(kind: OptionalArgument, sons: @[identDefs])
@@ -209,6 +213,9 @@ func stringifier*(attribute: Node): Node=
     attribute.kind == Readonly and attribute.sons[0].kind == Attribute
   
   Node(kind: Stringifier, sons: @[attribute])
+
+func stringifier*(): Node=
+  Node(kind: Stringifier, sons: @[])
 
 template keyValDecl(nodeKind: NodeKind, valueT: Node): Node=
   assert valueT.kind == Type

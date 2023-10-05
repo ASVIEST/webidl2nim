@@ -401,9 +401,11 @@ grammar readonly:
     setlike.SetlikeRest
 
 grammar stringifier:
-  Stringifier <- [tStringifier] * (StringifierWithAttribute | [tSemiColon])
-
-  StringifierWithAttribute <- attributes.OptionalReadOnlyAttribute:
+  Stringifier <- CustomStringifier | StringifierWithAttribute
+  
+  CustomStringifier <- [tStringifier] * [tSemiColon]:
+    capture stringifier()
+  StringifierWithAttribute <- [tStringifier] * attributes.OptionalReadOnlyAttribute * [tSemiColon]:
     capture stringifier(p.pop())
 
 grammar static_member:
