@@ -45,6 +45,7 @@ type
     constructorPolicy*: ConstructorPolicy
     
     features*: set[Feature]
+    exportCode*: bool
   
   Translator* = ref object
     settings*: TranslatorSettings
@@ -639,6 +640,11 @@ proc translatePartialInterface*(self; node: Node): TranslatedDeclAssembly =
         routineType = unkProcDef
       )
     else: makeField(attribute)
+  
+  template `*`(n: NimUNode): NimUNode =
+    if self.settings.exportCode:
+      unode(unkPostfix).add(ident"*", n)
+    else: n
 
   let selfTypedescNode =
     unode(unkIdentDefs).add(
@@ -675,7 +681,7 @@ proc translatePartialInterface*(self; node: Node): TranslatedDeclAssembly =
         case n.inner.kind:
           of Setlike:
             for i in readonlySetlike(
-              true,
+              self.settings.exportCode,
               tryRemoveExportMarker result.decl, 
               self.translateType n.inner[1]
             ): result.bindRoutines.add i
@@ -683,7 +689,7 @@ proc translatePartialInterface*(self; node: Node): TranslatedDeclAssembly =
 
           of Maplike:
             for i in readonlyMaplike(
-              true,
+              self.settings.exportCode,
               tryRemoveExportMarker result.decl, 
               self.translateType n.inner[1]
             ): result.bindRoutines.add i
@@ -718,14 +724,14 @@ proc translatePartialInterface*(self; node: Node): TranslatedDeclAssembly =
       
       of Setlike:
         for i in setlike(
-          true,
+          self.settings.exportCode,
           tryRemoveExportMarker result.decl, 
           self.translateType n[1]
         ): result.bindRoutines.add i
-      
+
       of Maplike:
         for i in maplike(
-          true,
+          self.settings.exportCode,
           tryRemoveExportMarker result.decl,
           self.translateType n.inner[1]
         ): result.bindRoutines.add i
@@ -742,14 +748,14 @@ proc translatePartialInterface*(self; node: Node): TranslatedDeclAssembly =
             case self.settings.constructorPolicy:
               of InitTypedesc:
                 genRoutine(
-                  name = ident"init",
+                  name = *ident"init",
                   returnType = tryRemoveExportMarker result.decl,
                   pragmas = pragma,
                   params = selfTypedescNode & argList
                 )
               of InitName, NewName:
                 genRoutine(
-                  name = ident(
+                  name = *ident(
                     (
                     if self.settings.constructorPolicy == InitName:
                       "init"
@@ -766,7 +772,7 @@ proc translatePartialInterface*(self; node: Node): TranslatedDeclAssembly =
         if n.sons.len > 0 and n.inner.kind in {Attribute, Readonly}:
           genAttribute(n.inner)
           result.bindRoutines.add genRoutine(
-            name = unode(unkAccQuoted).add(ident"$"),
+            name = *unode(unkAccQuoted).add(ident"$"),
             returnType = ident"string",
             params = [selfNode],
             body = unode(unkDotExpr).add(
@@ -776,7 +782,7 @@ proc translatePartialInterface*(self; node: Node): TranslatedDeclAssembly =
           )
         else:
           result.bindRoutines.add genRoutine(
-            name = unode(unkAccQuoted).add(ident"$"),
+            name = *unode(unkAccQuoted).add(ident"$"),
             returnType = ident"string",
             params = [selfNode],
             pragmas = pragma unode(unkExprColonExpr).add(

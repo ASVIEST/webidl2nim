@@ -96,6 +96,7 @@ when isMainModule:
       settings: TranslatorSettings(
         optionalAttributePolicy: optionalAttributePolicy,
         features: features,
+        exportCode: exportCode,
         onIdent: (node: NimUNode, isDecl: bool) =>
           node
           .applyOn(nep1, (node: NimUNode) => nep1Rename(node, isDecl))
