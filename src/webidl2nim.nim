@@ -11,7 +11,7 @@ when isMainModule:
   import std/[deques, sequtils, strutils, sugar, options, terminal]
   import pkg/[npeg, cligen]
   import packages/docutils/highlite
-  import "$nim"/compiler/renderer
+  import "$nim"/compiler/[ast, renderer]
 
   template writeColored(color: ForegroundColor, bright: bool = false, body: untyped) =
     if cliShowColor:
@@ -104,7 +104,7 @@ when isMainModule:
       ),
     )
     
-    let outNode = tr.translate(c).assemble(tr.imports).toPNode
+    let outNode = tr.translate(c).assemble(tr.imports).to(PNode)
     let rendered = renderTree(outNode, {})
     if outputFile == "stdout":
       writeColored(fgYellow, false):

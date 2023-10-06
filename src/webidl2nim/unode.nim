@@ -328,7 +328,7 @@ proc isSimpleOrdinal*(node: NimUNode): bool =
 import std/macros
 import "$nim"/compiler/[ast, idents, lineinfos]
 
-proc toNimNode*(node: NimUNode): NimNode =
+proc toNimNode(node: NimUNode): NimNode =
   result = newNimNode NimNodeKind(node.kind.ord())
 
   case node.kind:
@@ -349,9 +349,8 @@ proc toNimNode*(node: NimUNode): NimNode =
         result.add i.toNimNode()
 
 var cache = newIdentCache()
-import "$nim"/compiler/renderer
 
-proc toPNode*(node: NimUNode): PNode =
+proc toPNode(node: NimUNode): PNode =
   if node.kind == unkIdent:
     return newIdentNode(
       cache.getIdent(node.strVal), 
@@ -375,5 +374,10 @@ proc toPNode*(node: NimUNode): PNode =
     
     else:
       for i in node.sons:
-        # echo i.toPNode, " :  ", i.kind
         result.add i.toPNode()
+
+proc to*[T: NimNode | PNode](node: NimUNode, t: type T): T =
+  when T is NimNode:
+    node.toNimNode()
+  elif T is PNode:
+    node.toPNode()
