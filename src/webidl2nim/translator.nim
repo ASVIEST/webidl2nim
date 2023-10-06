@@ -609,6 +609,36 @@ proc translatePartialInterface*(self; node: Node): TranslatedDeclAssembly =
         strLit node[0].strVal
       )
     result.declFields.add field
+  
+  template makeField(attribute; hidden = false) =
+    makeField(attribute, attribute, hidden)
+  
+  template genAttribute(n) =
+    var attribute = n.skipNodes({Readonly})
+    if ReadonlyAttributes in self.settings.features and n.kind == Readonly:
+      # type T = ref object of JsRoot
+      #   attrHidden: TT
+      # proc attr*(self: T) = self.attrHidden
+      assert attribute[0].kind == Ident
+
+      let procName = self.translateIdent attribute[0]
+      attribute.sons[0].strVal =
+        attribute[0].strVal & "_hidden"
+
+      makeField(attribute, n.inner, true)
+      result.bindRoutines.add genRoutine(
+        name = procName,
+        returnType = tryRemoveExportMarker(
+          self.translateType attribute[1]
+        ),
+        params = [selfNode],
+        body = unode(unkDotExpr).add(
+          ident"self",
+          tryRemoveExportMarker self.translateIdent(attribute[0]),
+        ),            
+        routineType = unkProcDef
+      )
+    else: makeField(attribute)
 
   let selfTypedescNode =
     unode(unkIdentDefs).add(
@@ -659,36 +689,11 @@ proc translatePartialInterface*(self; node: Node): TranslatedDeclAssembly =
             ): result.bindRoutines.add i
 
           of Attribute:
-            var attribute = n.inner
-            if ReadonlyAttributes in self.settings.features:
-              # type T = ref object of JsRoot
-              #   attrHidden: TT
-              # proc attr*(self: T) = self.attrHidden
-              assert attribute[0].kind == Ident
-
-              let procName = self.translateIdent attribute[0]
-              attribute.sons[0].strVal =
-                attribute[0].strVal & "_hidden"
-
-              makeField(attribute, n.inner, true)
-              result.bindRoutines.add genRoutine(
-                name = procName,
-                returnType = tryRemoveExportMarker(
-                  self.translateType attribute[1]
-                ),
-                params = [selfNode],
-                body = unode(unkDotExpr).add(
-                  ident"self",
-                  tryRemoveExportMarker self.translateIdent(attribute[0]),
-                ),
-                
-                routineType = unkProcDef
-              )
-            else: makeField(attribute, n.inner)
+            genAttribute(n)
           else:
             raise newException(CatchableError, "Invalid readonly")
       
-      of Attribute: makeField(n, n)
+      of Attribute: genAttribute(n)
 
       of Operation:
         var currentAssembly: TranslatedDeclAssembly
@@ -759,33 +764,7 @@ proc translatePartialInterface*(self; node: Node): TranslatedDeclAssembly =
 
       of Stringifier:
         if n.sons.len > 0 and n.inner.kind in {Attribute, Readonly}:
-          var attribute = n.inner.skipNodes({Readonly})
-          if ReadonlyAttributes in self.settings.features and n.inner.kind == Readonly:
-            # type T = ref object of JsRoot
-            #   attrHidden: TT
-            # proc attr*(self: T) = self.attrHidden
-            assert attribute[0].kind == Ident
-
-            let procName = self.translateIdent attribute[0]
-            attribute.sons[0].strVal =
-              attribute[0].strVal & "_hidden"
-
-            makeField(attribute, n.inner.inner, true)
-            result.bindRoutines.add genRoutine(
-              name = procName,
-              returnType = tryRemoveExportMarker(
-                self.translateType attribute[1]
-              ),
-              params = [selfNode],
-              body = unode(unkDotExpr).add(
-                ident"self",
-                tryRemoveExportMarker self.translateIdent(attribute[0]),
-              ),            
-              routineType = unkProcDef
-            )
-          else: makeField(n.inner.skipNodes({Readonly}), n.inner.skipNodes({Readonly}))
-          
-          # makeField(n.inner.skipNodes({Readonly}), n.inner.skipNodes({Readonly}))
+          genAttribute(n.inner)
           result.bindRoutines.add genRoutine(
             name = unode(unkAccQuoted).add(ident"$"),
             returnType = ident"string",
