@@ -405,7 +405,7 @@ grammar stringifier:
   
   CustomStringifier <- [tStringifier] * [tSemiColon]:
     capture stringifier()
-  StringifierWithAttribute <- [tStringifier] * attributes.OptionalReadOnlyAttribute * [tSemiColon]:
+  StringifierWithAttribute <- [tStringifier] * attributes.OptionalReadOnlyAttribute:
     capture stringifier(p.pop())
 
 grammar static_member:

@@ -758,27 +758,55 @@ proc translatePartialInterface*(self; node: Node): TranslatedDeclAssembly =
                 )
 
       of Stringifier:
-        if n.sons.len > 0 and n.inner.kind == Attribute:
-          makeField(n.inner, n.inner)
+        if n.sons.len > 0 and n.inner.kind in {Attribute, Readonly}:
+          var attribute = n.inner.skipNodes({Readonly})
+          if ReadonlyAttributes in self.settings.features and n.inner.kind == Readonly:
+            # type T = ref object of JsRoot
+            #   attrHidden: TT
+            # proc attr*(self: T) = self.attrHidden
+            assert attribute[0].kind == Ident
+
+            let procName = self.translateIdent attribute[0]
+            attribute.sons[0].strVal =
+              attribute[0].strVal & "_hidden"
+
+            makeField(attribute, n.inner.inner, true)
+            result.bindRoutines.add genRoutine(
+              name = procName,
+              returnType = tryRemoveExportMarker(
+                self.translateType attribute[1]
+              ),
+              params = [selfNode],
+              body = unode(unkDotExpr).add(
+                ident"self",
+                tryRemoveExportMarker self.translateIdent(attribute[0]),
+              ),            
+              routineType = unkProcDef
+            )
+          else: makeField(n.inner.skipNodes({Readonly}), n.inner.skipNodes({Readonly}))
+          
+          # makeField(n.inner.skipNodes({Readonly}), n.inner.skipNodes({Readonly}))
           result.bindRoutines.add genRoutine(
             name = unode(unkAccQuoted).add(ident"$"),
             returnType = ident"string",
             params = [selfNode],
             body = unode(unkDotExpr).add(
               ident"self", 
-              tryRemoveExportMarker self.translateIdent n.inner[0]
+              tryRemoveExportMarker self.translateIdent n.inner.skipNodes({Readonly})[0]
+            )
+          )
+        else:
+          result.bindRoutines.add genRoutine(
+            name = unode(unkAccQuoted).add(ident"$"),
+            returnType = ident"string",
+            params = [selfNode],
+            pragmas = pragma unode(unkExprColonExpr).add(
+              self.importJs,
+              strLit"#.toString()"
             )
           )
       else:
-        result.bindRoutines.add genRoutine(
-          name = unode(unkAccQuoted).add(ident"$"),
-          returnType = ident"string",
-          params = [selfNode],
-          pragmas = pragma unode(unkExprColonExpr).add(
-            self.importJs,
-            strLit"#.toString()"
-          )
-        )
+        discard
   
   let recList = unode(unkRecList).add(result.declFields)
 
