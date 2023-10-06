@@ -165,15 +165,8 @@ func keywordToAccQuoted*(n: NimUNode): NimUNode =
 
   if isKeyword:
     unode(unkAccQuoted).add(n)
-    # n
   else:
     n
-
-#   let n =
-#     unode(unkPostfix)
-#     .add(ident("*"))
-#     .add(n)
-#   n
 
 func applyOn*(
   node: NimUNode, 
@@ -381,3 +374,50 @@ proc to*[T: NimNode | PNode](node: NimUNode, t: type T): T =
     node.toNimNode()
   elif T is PNode:
     node.toPNode()
+
+proc fromPNode(node: PNode): NimUNode =
+  result = unode NimUNodeKind(node.kind.ord())
+  case node.kind:
+    of nkNone, nkEmpty, nkNilLit:
+      discard
+
+    of nkCharLit..nkUInt64Lit:
+      result.intVal = node.intVal
+
+    of nkFloatLit..nkFloat64Lit:
+      result.floatVal = node.floatVal
+
+    of nkStrLit..nkTripleStrLit:
+      result.strVal = node.strVal
+    of nkSym:
+      result.strVal = node.sym.name.s
+    of nkIdent:
+      result.strVal = node.ident.s
+    else:
+      for i in node.sons:
+        result.add i.fromPNode()
+
+proc fromNimNode(node: NimNode): NimUNode =
+  result = unode NimUNodeKind(node.kind.ord())
+  case node.kind:
+    of nnkNone, nnkEmpty, nnkNilLit:
+      discard
+
+    of nnkCharLit..nnkUInt64Lit:
+      result.intVal = node.intVal
+
+    of nnkFloatLit..nnkFloat64Lit:
+      result.floatVal = node.floatVal
+
+    of nnkStrLit..nnkTripleStrLit, nnkCommentStmt, nnkIdent, nnkSym:
+      result.strVal = node.strVal
+    
+    else:
+      for i in node:
+        result.add i.fromNimNode()
+
+proc `from`*[T: NimNode | PNode](_: type NimUNode, node: T): NimUNode =
+  when T is NimNode:
+    node.fromNimNode()
+  elif T is PNode:
+    node.fromPNode()
