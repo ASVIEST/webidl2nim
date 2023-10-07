@@ -152,6 +152,23 @@ translateTypesDsl toNimType:
   float -> float32
   double -> float64
 
+  Int8Array  -> seq[int8]
+  Int16Array -> seq[int16]
+  Int32Array -> seq[int32]
+  BigInt64Array -> seq[int64]
+
+  (Uint8Array, Uint8ClampedArray) -> seq[byte]
+  Uint16Array -> seq[uint16]
+  Uint32Array -> seq[uint32]
+  Float32Array -> seq[float32]
+  Float64Array -> seq[float64]
+  BigUint64Array -> seq[uint64]
+
+  ArrayBuffer:
+    #`import` pkg/jsutils
+    # ? maybe better to make switch
+    `import` std/private/jsutils {.all.}
+    -> ArrayBuffer
 
   sequence[_] -> seq[_]
   Promise[_]:
@@ -174,10 +191,10 @@ translateTypesDsl toNimType:
     `import` std/jsffi
     -> JsObject
 
-  Record:
+  record[_]:
     #not tested with ffi
-    `import` std/tables
-    -> OrderedTable
+    `import` std/jsffi
+    -> JsObject
   
   EventTarget:
     `import` std/dom
@@ -240,7 +257,7 @@ proc translateType*(self; node: Node, typeDefKind: NimUNodeKind = unkEmpty): aut
 
   var nimType = self.toNimType(node)
 
-  if node.inner.kind != Ident or nimType.strVal in webidlNimIdents:
+  if node.inner.kind != Ident or nimType.kind != unkIdent or nimType.strVal in webidlNimIdents:
     return nimType
 
   tryRemoveExportMarker self.settings.onIdent(

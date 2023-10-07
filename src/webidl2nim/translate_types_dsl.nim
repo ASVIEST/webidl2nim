@@ -167,14 +167,36 @@ proc addGenericBranch(t, bGenericBase, aGenericBase, aGenericArgsIdx: NimNode): 
   
   (cond, body)
 
+proc addGenericToIdentBranch(t, bGenericBase, aName: NimNode): (NimNode, NimNode)=
+  let
+    ident = macros.ident"ident"
+
+    cond = quote: `t`.kind == Generic and `t`.sons[0].strVal == `bGenericBase`
+    body = quote: `ident`(`aName`)
+        
+  
+  (cond, body)
+
+
+
 proc addIdentBranch(t, bName, aName: NimNode): (NimNode, NimNode)=
-  # if t.kind == Ident and t.strVal == "boolean": ident("test")
   let
     ident = macros.ident"ident"
 
     cond = quote: `t`.kind == Ident and `t`.strVal == `bName`
     body = quote: `ident`(`aName`)
 
+  (cond, body)
+
+proc addIdentToGenericBranch(t, bName: NimNode, aGeneric: seq[NimNode]): (NimNode, NimNode)=
+  let
+    ident = macros.ident"ident"
+    aGenericIdents = newNimNode(nnkBracket).add:
+      aGeneric.mapIt(quote do: `ident`(`it`))
+
+    cond = quote: `t`.kind == Ident and `t`.strVal == `bName`
+    body = quote:
+      unode(unkBracketExpr).add(`aGenericIdents`)
   (cond, body)
 
 
@@ -347,11 +369,19 @@ macro translateTypesDsl*(name: untyped, body: untyped): untyped=
 
     case inNode.kind:
       of Ident:
-        (cond, body) = addIdentBranch(
-          t,
-          newStrLitNode(inNode.strVal), 
-          newStrLitNode(outNode.t.strVal)
-        )
+        (cond, body) = 
+          if outNode.t.kind == nnkBracketExpr:
+            addIdentToGenericBranch(
+              t,
+              newStrLitNode(inNode.strVal), 
+              outNode.t.mapIt(newStrLitNode it.strVal)
+            )
+          else:
+            addIdentBranch(
+              t,
+              newStrLitNode(inNode.strVal), 
+              newStrLitNode(outNode.t.strVal)
+            )
       of Idents:
         (cond, body) = addIdentsBranch(
           t,
@@ -359,18 +389,26 @@ macro translateTypesDsl*(name: untyped, body: untyped): untyped=
           newStrLitNode(outNode.t.strVal)
         )
       of Generic:
-        let
-          args = translateGenericArgs(
-            macros.ident"args", 
-            changeDescs[inNode],
-          )
+        (cond, body) =
+          if changeDescs[inNode].after.len == 0:
+            addGenericToIdentBranch(
+              t,
+              newStrLitNode(inNode.sons[0].strVal),
+              newStrLitNode(outNode.t.strVal),
+            )
+          else:
+            let
+              args = translateGenericArgs(
+                macros.ident"args", 
+                changeDescs[inNode],
+              )
 
-        (cond, body) = addGenericBranch(
-          t,
-          newStrLitNode(inNode.sons[0].strVal),
-          newStrLitNode(outNode.t.strVal),
-          args
-        )
+            addGenericBranch(
+              t,
+              newStrLitNode(inNode.sons[0].strVal),
+              newStrLitNode(outNode.t.strVal),
+              args
+            )
       else:
         raise newException(CatchableError, "Unsupported node kind")
     
