@@ -775,9 +775,14 @@ proc translatePartialInterface*(self; node: Node): TranslatedDeclAssembly =
             name = *unode(unkAccQuoted).add(ident"$"),
             returnType = ident"string",
             params = [selfNode],
-            body = unode(unkDotExpr).add(
-              ident"self", 
-              tryRemoveExportMarker self.translateIdent n.inner.skipNodes({Readonly})[0]
+            body = unode(unkPrefix).add(
+              ident"$",
+              unode(unkDotExpr).add(
+                ident"self", 
+                tryRemoveExportMarker(
+                  self.translateIdent n.inner.skipNodes({Readonly})[0]
+                )
+              )
             )
           )
         else:
