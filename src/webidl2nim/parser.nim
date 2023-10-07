@@ -50,7 +50,7 @@ template popSameKindNodes(nodeKind: NodeKind): seq[Node] =
   members.toSeq
 
 var p* = peg(Definitions, Token, p: ParserState):
-  Definitions <- *definitions.Definition
+  Definitions <- definitions.Definitions
 
 
 proc parseCode*(t: openArray[Token]): ParserState=

@@ -171,6 +171,10 @@ translateTypesDsl toNimType:
     `import` std/jsffi
     -> JsObject
   
+  any:
+    `import` std/jsffi
+    -> JsObject
+
   Record:
     #not tested with ffi
     `import` std/tables
@@ -182,7 +186,8 @@ translateTypesDsl toNimType:
 const
   webidlNimIdents = [
     "void", "string", "bool", "int8", "int16", "int32", "int64",
-    "byte", "uint16", "uint32", "uint64", "float32", "float64", "cstring"
+    "byte", "uint16", "uint32", "uint64", "float32", "float64", "cstring",
+    "auto"
   ]
   sep = ", "
 
