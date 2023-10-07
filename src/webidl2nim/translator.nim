@@ -191,14 +191,15 @@ const
   ]
   sep = ", "
 
-proc genImportJsMethodPattern(argsNumbers: openArray[int], methodName = "$1"): string =
-  fmt"#.{methodName}({argsNumbers.map(x => '$' & $x).join(sep)})"
-
 proc genImportJsMethodPattern(argsCnt: int, methodName = "$1"): string =
-  genImportJsMethodPattern(
-    (2..argsCnt).toSeq,
-    methodName
-  )
+  var args = newStringOfCap(sep.len * (argsCnt-2))
+  if argsCnt - 2 > 0:
+    args.add "#"
+  for i in 1..<(argsCnt - 2):
+    args.add sep
+    args.add "#"
+
+  "#." & methodName & '(' & args & ')'
 
 using
   self: Translator

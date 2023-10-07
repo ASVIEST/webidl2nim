@@ -6,8 +6,6 @@ proc processProc(i: NimNode, gp: seq[string]): NimNode=
 
   let params = i.params[1..^1]
   var returnType = i.params[0]
-  # if returnType in gp:
-
 
   var paramsFlatten = newNimNode(nnkFormalParams)
   for i in params:
@@ -16,9 +14,14 @@ proc processProc(i: NimNode, gp: seq[string]): NimNode=
       paramsFlatten.add newIdentDefs(j, t, i[^1])
 
   var pragmaStr = i.pragma[0][1].strVal
+  var consts = seq[string].default
+
   for i, e in paramsFlatten:
-    pragmaStr = pragmaStr.replace(e[0].strVal, "$" & $(i + 2))
+    consts.add chr(i + ord'a') & " = #"
+    pragmaStr = pragmaStr.replace(e[0].strVal, $chr(i + ord'a'))
   
+  pragmaStr = "(() => {" & consts.join", " & "; " & pragmaStr & "})()"
+
   var generatedParams = newNimNode(nnkBracket)
   for i in paramsFlatten:
     # generatedParams.add 
