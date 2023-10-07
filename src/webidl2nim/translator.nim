@@ -896,9 +896,9 @@ proc genDeclTable(nodes: seq[Node]): Table[string, Node] =
 
     result[i.name.strVal] = i
 
-proc translate*(self; nodes: seq[Node]): seq[TranslatedDeclAssembly] =
+proc translate*(self; nodes: seq[Node], allowUndeclared = false): seq[TranslatedDeclAssembly] =
   var table = nodes.genDeclTable()
-  var finder = DepsFinder.init()
+  var finder = DepsFinder.init(allowUndeclared)
   let order = getInheritanceOrder(nodes, finder)
   self.deps = finder.deps
   for i in order:

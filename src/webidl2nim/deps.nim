@@ -14,10 +14,12 @@ type
   
   DepsFinder* = ref object
     deps*: Table[string, DeclDeps[string]]
+    skipUndeclared*: bool
 
-proc init*(_: type DepsFinder): DepsFinder =
+proc init*(_: type DepsFinder, skipUndeclared: bool = true): DepsFinder =
   DepsFinder(
-    deps: initTable[string, DeclDeps[string]]()
+    deps: initTable[string, DeclDeps[string]](),
+    skipUndeclared: skipUndeclared
   )
 
 using self: DepsFinder
@@ -44,7 +46,10 @@ proc countDeps*(self; s: string; countTable: var CountTable[string]) =
 
     while used.len > 0:
       var nextDecl = used.pop()
-      deps.add self.deps[nextDecl]
+      if nextDecl in self.deps:
+        deps.add self.deps[nextDecl]
+      elif not self.skipUndeclared:
+        raise newException(CatchableError, "Identifier " & nextDecl & " not found")
 
       countTable.inc s
 
@@ -100,11 +105,17 @@ proc updateUsedTypes(node: Node, deps: var DeclDeps[string]) =
 
     of Type:
       if (let i = node.inner; i).kind == Ident and i.strVal notin keywordNames:
-        # User defined types can be only idents
         deps.usedTypes.incl i.strVal
+      else:
+        for i in node.sons:
+          updateUsedTypes(i, deps)
 
     of Required:
       updateUsedTypes(node.inner, deps)
+    
+    of Union:
+      for i in node.sons:
+        updateUsedTypes(i, deps)
 
     else:
       discard
