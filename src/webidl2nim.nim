@@ -9,6 +9,7 @@ export tokenize
 when isMainModule:
   # cli
   import std/[deques, sequtils, strutils, sugar, options, terminal]
+  from os import walkPattern
   import pkg/[npeg, cligen]
   import packages/docutils/highlite
   import "$nim"/compiler/[ast, renderer]
@@ -65,6 +66,7 @@ when isMainModule:
     inputFile = "stdin",
     nep1 = true,
     exportCode = true,
+    allowUndeclared = false,
     cliShowColor = true,
     cliOutFileListing = 10,
     optionalAttributePolicy = GenDeferredProcs
@@ -86,9 +88,10 @@ when isMainModule:
         s.add line & "\n"
 
     else:
-      let f = open(inputFile)
-      s = readAll(f)
-      f.close()
+      for path in walkPattern(inputFile):
+        let f = open(inputFile)
+        s.add readAll(f)
+        f.close()
     
     let t = tokenize s
     let c = parseCode(t).stack.toSeq
@@ -105,7 +108,7 @@ when isMainModule:
       ),
     )
     
-    let outNode = tr.translate(c).assemble(tr.imports).to(PNode)
+    let outNode = tr.translate(c, allowUndeclared).assemble(tr.imports).to(PNode)
     let rendered = renderTree(outNode, {})
     if outputFile == "stdout":
       writeColored(fgYellow, false):
@@ -137,4 +140,11 @@ when isMainModule:
         if i < countLines(rendered):
           stdout.writeLine "..."
 
-  dispatch cli
+  dispatch cli, help = {
+    "features": "used webidl2nim features",
+    "inputFile": "input file", 
+    "outputFile": "output file",
+    "nep1": "rename idents, following nep1", 
+    "exportCode": "make generated code public",
+    "allowUndeclared": "allow undeclared identifiers in webidl code"
+  }
