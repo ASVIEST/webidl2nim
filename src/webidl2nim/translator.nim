@@ -3,7 +3,6 @@ import ast
 import translate_types_dsl
 
 import sequtils
-import strutils
 import strformat
 import sets
 import sugar
