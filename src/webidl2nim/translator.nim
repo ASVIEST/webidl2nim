@@ -157,7 +157,7 @@ translateTypesDsl toNimType:
   sequence[_] -> seq[_]
   Promise[_]:
     `import` std/asyncjs
-    -> PromiseJs[_]
+    -> Future[_]
 
   bigint:
     `import` std/jsbigints
