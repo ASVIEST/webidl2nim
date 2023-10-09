@@ -2,7 +2,7 @@
 
 version       = "0.0.1"
 author        = "ASVIEST"
-description   = "webidl to Nim translator"
+description   = "webidl to Nim bindings generator"
 license       = "MIT"
 srcDir        = "src"
 installExt    = @["nim"]
