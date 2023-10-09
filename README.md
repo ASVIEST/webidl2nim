@@ -37,8 +37,8 @@ let translator {.used.} = Translator(
   ),
 )
 
-import "$nim"/compiler/renderer
-echo translator.translate(c).assemble(translator.imports).toPNode
+import "$nim"/compiler/[ast, renderer]
+echo translator.translate(c).assemble(translator.imports).to(PNode)
 ```
 Output:
 ```nim
