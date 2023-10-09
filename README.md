@@ -22,16 +22,17 @@ let c = parseCode(t).stack.toSeq
 let translator {.used.} = Translator(
   settings: TranslatorSettings(
   optionalAttributePolicy: GenDeferredProcs,#UseDefaultVal,#GenDeferredProcs,
-    features: {
-      MethodCallSyntax, 
-      NamespaceJsFieldBinding, 
-      ObjConstrRequired,
-      ReadonlyAttributes
-    },
-    onTypeDef: (node: NimUNode, typeDefKind: NimUNodeKind) =>
-      node
-      .nep1Rename
-      .makePublic
+  features: {
+    MethodCallSyntax, 
+    NamespaceJsFieldBinding, 
+    ObjConstrRequired,
+    ReadonlyAttributes
+  },
+  onIdent: (node: NimUNode, isDecl: bool) =>
+    node
+    .nep1Rename(isDecl)
+    .keywordToAccQuoted()
+    .makePublic
   ),
 )
 
