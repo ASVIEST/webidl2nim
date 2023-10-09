@@ -1,5 +1,5 @@
 import tokens
-import std/[strutils, sequtils, sugar, tables]
+import std/[strutils, sequtils, sugar, tables, setutils]
 import pkg/regex
 
 const 
@@ -25,7 +25,7 @@ const
     for i in tAsync..tRecord:
       ($i, i)
   
-  alpha = {'a'..'z', 'A'..'Z', '0'..'9'}
+  alpha = {'a'..'z', 'A'..'Z', '0'..'9', '_', '-'}
 
   reTokens = (
     ident: re2"[_-]?[A-Za-z][0-9A-Z_a-z-]*",
