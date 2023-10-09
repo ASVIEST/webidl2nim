@@ -817,6 +817,40 @@ proc translatePartialInterface*(self; node: Node): TranslatedDeclAssembly =
               strLit"#.toString()"
             )
           )
+      of Static:
+        case n.inner.kind:
+          of RegularOperation:
+            var tmpAssembly = TranslatedDeclAssembly.default
+            self.translateRegularOperation(tmpAssembly, n.inner)
+            for i in tmpAssembly.bindRoutines:
+              var formalParams = unode(unkFormalParams)
+              with formalParams:
+                add i[3][0]
+                add selfTypedescNode
+                add i[3].sons[1..^1]
+
+              var procDef = i
+              procDef[3] = formalParams
+              result.bindRoutines.add procDef
+          of Readonly, Attribute:
+            # Same as const, but not defined in webidl
+            let attribute = n.inner.skipNodes({Readonly})
+            assert attribute.kind == Attribute
+            
+            result.bindRoutines.add genRoutine(
+              name = self.translateIdent attribute[0],
+              returnType = self.translateType attribute[1],
+              params = [selfTypedescNode],
+              pragmas = pragma unode(unkExprColonExpr).add(
+                self.importJs,
+                strLit(node[0].strVal & "." & attribute[0].strVal)
+              ),
+              routineType = unkProcDef
+            )
+          else:
+            raise newException(CatchableError, "Strange node of kind " & $n.inner.kind & " in static member")
+
+
       else:
         discard
   

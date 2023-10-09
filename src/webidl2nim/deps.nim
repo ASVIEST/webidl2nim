@@ -69,8 +69,7 @@ proc updateUsedTypes(node: Node, deps: var DeclDeps[string]) =
         if node.inner.kind == RegularOperation:
           node.inner
         else:
-          # TODO: add specific op
-          node.inner
+          node.inner[0]
       
       assert op.kind == RegularOperation
       updateUsedTypes(op[1], deps)
