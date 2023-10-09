@@ -28,6 +28,7 @@ let translator {.used.} = Translator(
     ObjConstrRequired,
     ReadonlyAttributes
   },
+  exportCode: true,
   onIdent: (node: NimUNode, isDecl: bool) =>
     node
     .nep1Rename(isDecl)
