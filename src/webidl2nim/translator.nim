@@ -849,8 +849,60 @@ proc translatePartialInterface*(self; node: Node): TranslatedDeclAssembly =
             )
           else:
             raise newException(CatchableError, "Strange node of kind " & $n.inner.kind & " in static member")
+      of Iterable:
+        proc genIteratorImpl(
+          methodName: string, 
+          outType: NimUNode, 
+          nimName =
+            self.translateIdent Node(kind: Ident, strVal: methodName)
+        ): auto =
+          let
+            methodNameS = strLit('.' & methodName & "()")
+            selfName = selfNode[0]
+          
+          let body = ugenAst(methodNameS, outType, selfName):
+            {.emit: ["var it = ", selfName, methodNameS].}
+            var it {.importc, nodecl.}: JsObject
+            while true:
+              {.emit: "let next = it.next();".}
+              let next {.importc, nodecl.}: JsObject
+                
+              if next.done.to(bool):
+                break
+
+              yield next.value.to(outType)
+          
+          
+          genRoutine(
+            name = nimName,
+            returnType = outType,
+            params = [selfNode],
+            pragmas = pragma unode(unkExprColonExpr).add(
+              self.importJs,
+              strLit(node[0].strVal & "." & methodName & "()")
+            ),
+            body = body,
+            routineType = unkIteratorDef
+          )
 
 
+        template genIterator(methodName: string, outType: NimUNode)=
+          result.bindRoutines.add genIteratorImpl(methodName, outType)
+        template genIterator(methodName: string, outType: NimUNode, nimName: NimUNode)=
+          result.bindRoutines.add genIteratorImpl(methodName, outType, nimName)
+        
+        self.imports.incl "std/jsffi"
+        var v = self.translateType n[1]
+        genIterator("values", v)
+        if n[0].kind != Empty:
+          let k = self.translateType n[0]
+          genIterator("keys", k)
+          genIterator(
+            "entries", 
+            unode(unkTupleConstr).add(k, v),
+            *ident"pairs"
+          )
+      
       else:
         discard
   

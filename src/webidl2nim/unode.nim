@@ -326,7 +326,7 @@ proc replaceIdentBy*(n: var NimUNode, id, by: NimUNode)=
       for i in 0..<n.sons.len:
         replaceIdentBy(n[i], id, by)
 
-proc generator*(n: NimUNode): NimUNode =
+proc generator*(n: NimUNode, skipIdents: seq[string] = @[]): NimUNode =
   ## like astGenRepr for NimNode, but result is NimUNode
   template unodeCall(kind) =
     unode(unkCall).add(
@@ -364,10 +364,13 @@ proc generator*(n: NimUNode): NimUNode =
       valBlock(n, floatLit n.floatVal, "floatVal")
 
     of unkIdent:
-      unode(unkCallStrLit).add(
-        ident"ident",
-        strLit(n.strVal)
-      )
+      if n.strVal in skipIdents:
+        n
+      else:
+        unode(unkCallStrLit).add(
+          ident"ident",
+          strLit(n.strVal)
+        )
     of unkSym:
       unode(unkEmpty)
 
@@ -384,7 +387,7 @@ proc generator*(n: NimUNode): NimUNode =
         ident($n.kind)
       )
       for i in n.sons:
-        call.add i.generator
+        call.add i.generator(skipIdents)
 
       call
 
@@ -505,18 +508,12 @@ proc `from`*[T: NimNode | PNode](_: type NimUNode, node: T): NimUNode =
 
 proc ugenAstImpl(args: seq[NimNode], body: NimNode): NimUNode =
   var n = NimUNode.from(body)
-  for a in args:
-    var val = getImpl(a)[2]
-    n.replaceIdentBy(
-      ident(a.strVal), 
-      NimUNode.from(val)
-    )
-  n
+  n.generator(args.mapIt(it.strVal))
 
-macro ugenAst*(args: varargs[typed], body: untyped): untyped=
+macro ugenAst*(args: varargs[untyped]): untyped=
   var s = seq[NimNode].default
-  for i in args:
+  for i in args[0..^2]:
     s.add i
   
-  let v = ugenAstImpl(s, body)
-  v.generator.to(NimNode)
+  let v = ugenAstImpl(s, args[^1])
+  v.to(NimNode)
