@@ -39,9 +39,9 @@ type
       of unkNone, unkEmpty, unkNilLit:
         discard
       of unkCharLit..unkUInt64Lit:
-        intVal: BiggestInt
+        intVal*: BiggestInt
       of unkFloatLit..unkFloat64Lit:
-        floatVal: BiggestFloat
+        floatVal*: BiggestFloat
       of unkStrLit..unkTripleStrLit, unkCommentStmt, unkIdent, unkSym:
         strVal*: string
       else:
@@ -313,6 +313,82 @@ proc isSimpleOrdinal*(node: NimUNode): bool =
   ]: true
   else: false
 
+proc replaceIdentBy*(n: var NimUNode, id, by: NimUNode)=
+  case n.kind:
+    of unkIdent:
+      if n.strVal == id.strVal:
+        n = by
+    of unkCharLit..unkUInt64Lit, 
+       unkFloatLit..unkFloat64Lit, 
+       unkStrLit..unkTripleStrLit, 
+       unkCommentStmt, unkSym: discard
+    else:
+      for i in 0..<n.sons.len:
+        replaceIdentBy(n[i], id, by)
+
+proc generator*(n: NimUNode): NimUNode =
+  ## like astGenRepr for NimNode, but result is NimUNode
+  template unodeCall(kind) =
+    unode(unkCall).add(
+      ident"unode",
+      ident($kind)
+    )
+  template valBlock(n, val; setter: string) =
+    unode(unkBlockStmt).add(
+      ident"tmp",
+      unode(unkStmtList).add(
+        unode(unkVarSection).add unode(unkIdentDefs).add(
+          ident"i", 
+          empty(), 
+          unodeCall(n.kind)
+        ),
+        unode(unkAsgn).add(
+          unode(unkDotExpr).add(ident"i", ident(setter)),
+          val
+        ),
+        ident"i"
+      )
+    )
+  
+  case n.kind:
+    of unkNone, unkNilLit:
+      unodeCall(n.kind)
+    
+    of unkEmpty:
+      unode(unkCall).add ident"empty"
+    
+    of unkCharLit..unkUInt64Lit:
+      valBlock(n, intLit n.intVal, "intVal")
+    
+    of unkFloatLit..unkFloat64Lit:
+      valBlock(n, floatLit n.floatVal, "floatVal")
+
+    of unkIdent:
+      unode(unkCallStrLit).add(
+        ident"ident",
+        strLit(n.strVal)
+      )
+    of unkSym:
+      unode(unkEmpty)
+
+    of unkStrLit, unkRStrLit:
+      unode(unkCallStrLit).add(
+        ident"strLit",
+        strLit(n.strVal)
+      )
+    
+    else:
+      var call = unode(unkCall).add ident"add"
+      call.add unode(unkCall).add(
+        ident"unode",
+        ident($n.kind)
+      )
+      for i in n.sons:
+        call.add i.generator
+
+      call
+
+
 {.pop.}
 
 
@@ -320,6 +396,7 @@ proc isSimpleOrdinal*(node: NimUNode): bool =
 
 import std/macros
 import "$nim"/compiler/[ast, idents, lineinfos]
+{.experimental: "dynamicBindSym".}
 
 proc toNimNode(node: NimUNode): NimNode =
   result = newNimNode NimNodeKind(node.kind.ord())
@@ -334,8 +411,12 @@ proc toNimNode(node: NimUNode): NimNode =
     of unkFloatLit..unkFloat64Lit:
       result.floatVal = node.floatVal
 
-    of unkStrLit..unkTripleStrLit, unkCommentStmt, unkIdent, unkSym:
+    of unkStrLit..unkTripleStrLit, unkCommentStmt:
       result.strVal = node.strVal
+    of unkIdent:
+      result = macros.ident(node.strVal)
+    of unkSym:
+      result = bindSym(node.strVal, brOpen)
     
     else:
       for i in node.sons:
@@ -421,3 +502,21 @@ proc `from`*[T: NimNode | PNode](_: type NimUNode, node: T): NimUNode =
     node.fromNimNode()
   elif T is PNode:
     node.fromPNode()
+
+proc ugenAstImpl(args: seq[NimNode], body: NimNode): NimUNode =
+  var n = NimUNode.from(body)
+  for a in args:
+    var val = getImpl(a)[2]
+    n.replaceIdentBy(
+      ident(a.strVal), 
+      NimUNode.from(val)
+    )
+  n
+
+macro ugenAst*(args: varargs[typed], body: untyped): untyped=
+  var s = seq[NimNode].default
+  for i in args:
+    s.add i
+  
+  let v = ugenAstImpl(s, body)
+  v.generator.to(NimNode)
