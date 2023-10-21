@@ -45,6 +45,16 @@ Output:
 type
   HelloWebidl* = ref object of JsRoot
 ```
+## User defined types
+webidl2nim support to adding new user types.
+```nim
+translateTypesDsl MyMapping:
+  HTML5Canvas:
+      import pkg/html5_canvas
+      -> Canvas
+translator.addMapping MyMapping
+```
+
 ## Features
 #### import std lib modules that needed for definition.
 ```webidl
@@ -63,8 +73,8 @@ type
 ```
 #### automatically reorder code.
 ```webidl
-interface NumberWrapper {
-  TypeFromFuture sum(short ...num);
+interface NumberWrapper {                                                                                                                    
+  type-from-future sum(short ...num);
 };
 
 typedef unsigned long type-from-future;
@@ -75,7 +85,8 @@ type
   TypeFromFuture* = distinct uint32
   NumberWrapper* = ref object of JsRoot
   
-proc sum*(self: NumberWrapper; num: varargs[int16]): TypeFromFuture {.importc: .}
+proc sum*(self: NumberWrapper; num: varargs[int16]): TypeFromFuture
+    {.importjs: "#.$1(#)".}
 ```
 #### method call syntax support (UFCS)
 ```webidl
@@ -89,7 +100,7 @@ type
   NumberWrapper* = ref object of JsRoot
   
 proc sum*(self: NumberWrapper; num: varargs[int16]): uint64
-    {.importjs: "#.$1($2, $3)".}
+    {.importjs: "#.$1(#)".}
 ```
 Output (without method call syntax):
 ```nim
