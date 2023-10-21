@@ -52,6 +52,9 @@ type
 
     symCache: SymCache # webidl syms
     deps: Table[string, DeclDeps[string]]
+
+    # typeMappings: seq[]
+    nimTypes: seq[string]#=
   
   TranslatedDeclAssembly* = object
     decl: NimUNode
@@ -133,7 +136,7 @@ proc findSym*(self: Translator; name: Node): Sym =
 proc tryFindSym*(self: Translator; name: Node): Option[Sym] =
   self.tryFindSym(name.strVal)
 
-translateTypesDsl toNimType:
+translateTypesDsl nimTypes:
   undefined -> void
 
   (ByteString, DOMString, USVString) -> cstring
@@ -234,7 +237,8 @@ proc importJs(self): auto =
     ident"importjs"
 
 proc toNimType*(self; n: Node): auto =
-  toNimType(n, self.imports)  
+  let mapping = nimTypes.mapping
+  mapping(n, self.imports)
 
 proc translateIdentImpl(self; node: Node, capitalize: bool): auto =
   assert node.kind in {Ident, Empty}

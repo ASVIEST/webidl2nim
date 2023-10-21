@@ -125,7 +125,7 @@ iterator applyGenericArgDesc(
         else:
           yield infix(seqPos.start.index.getNode, "..", seqPos.stop.index.getNode)
 
-proc translateGenericArgs(name: NimNode, changeDesc: GenericArgsChangeDesc): NimNode =
+proc translateGenericArgs(procName: NimNode, name: NimNode, changeDesc: GenericArgsChangeDesc): NimNode =
   assert name.kind == nnkIdent
 
   for i in applyGenericArgDesc(changeDesc):
@@ -139,10 +139,10 @@ proc translateGenericArgs(name: NimNode, changeDesc: GenericArgsChangeDesc): Nim
     
     curr =
       if i.kind in {nnkPrefix, nnkIntLit}:
-        quote: @[`curr`.toNimType(imports)]
+        quote: @[`curr`.`procName`(imports)]
       else:
         quote do:
-          `curr`.mapIt(it.toNimType(imports))
+          `curr`.mapIt(it.`procName`(imports))
     
     if result.isNil:
       result = curr
@@ -356,6 +356,7 @@ macro translateTypesDsl*(name: untyped, body: untyped): untyped=
   # echo "imp: ", imports
   # echo changeDescs
   var
+    procName = macros.ident(name.strVal & "Impl")
     t = macros.ident"t"
     tContainer = macros.ident"tContainer"
     ident = macros.ident"ident"
@@ -399,6 +400,7 @@ macro translateTypesDsl*(name: untyped, body: untyped): untyped=
           else:
             let
               args = translateGenericArgs(
+                procName,
                 macros.ident"args", 
                 changeDescs[inNode],
               )
@@ -437,7 +439,7 @@ macro translateTypesDsl*(name: untyped, body: untyped): untyped=
     quote do: `t`.kind == Union,
     quote do: `nestList`(
       `ident`("or"), 
-      `t`.sons.mapIt(it.`name`(`imports`)),
+      `t`.sons.mapIt(it.`procName`(`imports`)),
       unkInfix
     )
   )
@@ -447,7 +449,7 @@ macro translateTypesDsl*(name: untyped, body: untyped): untyped=
     quote do:
       unode(unkBracketExpr)
         .add(`t`.sons[0].strVal.`ident`)
-        .add(`t`.sons[1..^1].mapIt(it.`name`(`imports`)))
+        .add(`t`.sons[1..^1].mapIt(it.`procName`(`imports`)))
   )
 
   ifNode.add newNimNode(nnkElse).add quote do: 
@@ -456,10 +458,16 @@ macro translateTypesDsl*(name: untyped, body: untyped): untyped=
   # var genProc = macros.ident("gen" & capitalizeAscii(name.strVal) & "Proc")
 
   var r = quote do:
-    proc `name`(`tContainer`: Node, `imports`: var HashSet[string]): NimUNode {.inline.} =
+    type `name`* = object
+    
+    proc `procName`(`tContainer`: Node, `imports`: var HashSet[string]): NimUNode =
       assert `tContainer`.kind == Type
       let `t` = `tContainer`.sons[0]
       `ifNode`
+    
+    proc mapping*(_: type `name`): auto =
+      `procName`
+    
 
   when defined(webidl2nim.debug):  
     echo r.repr
