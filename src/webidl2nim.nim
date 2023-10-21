@@ -1,4 +1,4 @@
-import webidl2nim/[lexer, parser, translator, unode]
+import webidl2nim/[lexer, parser, translator, unode, translate_types_dsl]
 
 export translator
 export unode
@@ -107,7 +107,7 @@ when isMainModule:
           .applyOn(exportCode, makePublic)
       ),
     )
-    
+
     let outNode = tr.translate(c, allowUndeclared).assemble(tr.imports).to(PNode)
     let rendered = renderTree(outNode, {})
     if outputFile == "stdout":

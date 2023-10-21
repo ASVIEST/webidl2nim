@@ -53,8 +53,8 @@ type
     symCache: SymCache # webidl syms
     deps: Table[string, DeclDeps[string]]
 
-    # typeMappings: seq[]
-    nimTypes: seq[string]#=
+    typeMappings: seq[proc (t: Node, imports: var HashSet[string]): NimUNode]
+    webidlContainsProcs: seq[proc (n: Node): bool {.noSideEffect.}]
   
   TranslatedDeclAssembly* = object
     decl: NimUNode
@@ -224,6 +224,14 @@ using
   self: Translator
   assembly: var TranslatedDeclAssembly
 
+type TypeMapping = concept type T
+  T.mapping#  is proc (t: Node, imports: var HashSet[string]): NimUNode
+  T.contains# is proc (n: Node): bool
+
+template addMapping*(self; m: type TypeMapping)=
+  self.typeMappings.add m.mapping
+  self.webidlContainsProcs.add m.contains
+
 proc jsRoot(self): auto =
   if JsRootToRootObj in self.settings.features:
     ident"RootObj"
@@ -237,8 +245,20 @@ proc importJs(self): auto =
     ident"importjs"
 
 proc toNimType*(self; n: Node): auto =
-  let mapping = nimTypes.mapping
-  mapping(n, self.imports)
+  let 
+    mapping = nimTypes.mapping
+    contains = nimTypes.contains
+
+  if contains(n.inner):
+    return mapping(n, self.imports)
+
+  for i in 0..self.typeMappings.high:
+    let
+      mapping = self.typeMappings[i]
+      contains = self.webidlContainsProcs[i]
+    
+    if contains(n.inner):
+      return mapping(n, self.imports)
 
 proc translateIdentImpl(self; node: Node, capitalize: bool): auto =
   assert node.kind in {Ident, Empty}

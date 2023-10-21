@@ -302,6 +302,10 @@ proc translateTypesDslImpl(
 
         for field in i[1]:
           case field.kind:
+            of nnkImportStmt:
+              nimReplacement.action = Import
+              nimReplacement.imports = [field[0].repr].toHashSet
+
             of nnkCommand:
               #import moduleName
 
@@ -314,6 +318,7 @@ proc translateTypesDslImpl(
                 of "import":
                   nimReplacement.action = Import
                   nimReplacement.imports = [field[1].repr].toHashSet
+                  echo field[1].repr
 
             of nnkPrefix:
               # -> NimType
@@ -358,18 +363,26 @@ macro translateTypesDsl*(name: untyped, body: untyped): untyped=
   var
     procName = macros.ident(name.strVal & "Impl")
     t = macros.ident"t"
+    n = macros.ident"n"
+    containsName = macros.ident(name.strVal & "Contains")
     tContainer = macros.ident"tContainer"
     ident = macros.ident"ident"
     nestList = macros.ident"nestList"
     imports = macros.ident"imports"
 
   let ifNode = newNimNode(nnkIfStmt)
+  
+  var
+    webidlIdentStrs = newNimNode(nnkBracket)
+    webidlIdentsConds = seq[NimNode].default
 
   for i, (inNode, outNode) in nodes:
     var cond, body: NimNode
 
     case inNode.kind:
       of Ident:
+        webidlIdentStrs.add newStrLitNode(inNode.strVal)
+
         (cond, body) = 
           if outNode.t.kind == nnkBracketExpr:
             addIdentToGenericBranch(
@@ -384,6 +397,14 @@ macro translateTypesDsl*(name: untyped, body: untyped): untyped=
               newStrLitNode(outNode.t.strVal)
             )
       of Idents:
+        echo "I am here, ", name.repr
+        var l = newNimNode(nnkBracket)
+        for i, e in inNode.sons:
+          let s = newStrLitNode(e.strVal)
+          l.add quote do:
+            `n`[`i`].strVal == `s`
+        webidlIdentsConds.add nestList(ident"and", l)
+
         (cond, body) = addIdentsBranch(
           t,
           inNode.sons.mapIt(newStrLitNode(it.strVal)), 
@@ -455,19 +476,33 @@ macro translateTypesDsl*(name: untyped, body: untyped): untyped=
   ifNode.add newNimNode(nnkElse).add quote do: 
     raise newException(CatchableError, "Invalid webidl type")
   
-  # var genProc = macros.ident("gen" & capitalizeAscii(name.strVal) & "Proc")
+  var containsConds = newNimNode(nnkBracket).add(
+    quote do: `n`.kind == Ident and `n`.strVal in `webidlIdentStrs`
+  )
+  if webidlIdentsConds.len > 0:
+    var webidlIdentsCond = newNimNode(nnkBracket).add webidlIdentsConds
+    webidlIdentsCond = nestList(ident"or", webidlIdentsCond)
+    containsConds.add quote do:
+      `n`.kind == Idents and `webidlIdentsCond`
+  
+  containsConds = nestList(ident"or", containsConds)
 
   var r = quote do:
-    type `name`* = object
+    type `name` = object
     
     proc `procName`(`tContainer`: Node, `imports`: var HashSet[string]): NimUNode =
       assert `tContainer`.kind == Type
       let `t` = `tContainer`.sons[0]
       `ifNode`
     
-    proc mapping*(_: type `name`): auto =
+    proc mapping(_: type `name`): auto =
       `procName`
     
+    func `containsName`(`n`: Node): bool =
+      `containsConds`
+    
+    func contains(_: type `name`): auto =
+      `containsName`
 
   when defined(webidl2nim.debug):  
     echo r.repr
