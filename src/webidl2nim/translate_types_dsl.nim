@@ -318,7 +318,6 @@ proc translateTypesDslImpl(
                 of "import":
                   nimReplacement.action = Import
                   nimReplacement.imports = [field[1].repr].toHashSet
-                  echo field[1].repr
 
             of nnkPrefix:
               # -> NimType
@@ -355,11 +354,7 @@ macro translateTypesDsl*(name: untyped, body: untyped): untyped=
   var 
     nodes: seq[(Node, NimReplacement)]
     changeDescs: Table[Node, GenericArgsChangeDesc]
-  #NimReplacement t[]
   translateTypesDslImpl(body, nodes, changeDescs)
-  # echo nodes
-  # echo "imp: ", imports
-  # echo changeDescs
   var
     procName = macros.ident(name.strVal & "Impl")
     t = macros.ident"t"
@@ -397,7 +392,6 @@ macro translateTypesDsl*(name: untyped, body: untyped): untyped=
               newStrLitNode(outNode.t.strVal)
             )
       of Idents:
-        echo "I am here, ", name.repr
         var l = newNimNode(nnkBracket)
         for i, e in inNode.sons:
           let s = newStrLitNode(e.strVal)
