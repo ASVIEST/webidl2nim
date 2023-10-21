@@ -260,6 +260,8 @@ proc toNimType*(self; n: Node): auto =
     if contains(n.inner):
       return mapping(n, self.imports)
 
+  ident(n.inner.strVal)
+
 proc translateIdentImpl(self; node: Node, capitalize: bool): auto =
   assert node.kind in {Ident, Empty}
   if node.isEmpty:
