@@ -1,5 +1,5 @@
 import tokens
-import std/[strutils, sequtils, sugar, tables, setutils]
+import std/[strutils, sequtils, sugar, tables]
 import pkg/regex
 
 const 
@@ -121,8 +121,6 @@ iterator lex(self: var Lexer; s: string): Token =
         inc pos
         
       raise newException(CatchableError, "Lexing error at " & "Ln " & $ln & ", Col " & $col)
-
-    # if 
 
 proc tokenize*(str: string): seq[Token] {.inline.} =
   var lexer = Lexer(buffPos: 0)

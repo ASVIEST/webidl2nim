@@ -55,6 +55,7 @@ type
 
     typeMappings: seq[proc (t: Node, imports: var HashSet[string]): NimUNode]
     webidlContainsProcs: seq[proc (n: Node): bool {.noSideEffect.}]
+    additionalNimIdents: HashSet[string]
   
   TranslatedDeclAssembly* = object
     decl: NimUNode
@@ -227,10 +228,12 @@ using
 type TypeMapping = concept type T
   T.mapping#  is proc (t: Node, imports: var HashSet[string]): NimUNode
   T.contains# is proc (n: Node): bool
+  T.usedNimIdents is HashSet[string]
 
 template addMapping*(self; m: type TypeMapping)=
   self.typeMappings.add m.mapping
   self.webidlContainsProcs.add m.contains
+  self.additionalNimIdents.incl m.usedNimIdents
 
 proc jsRoot(self): auto =
   if JsRootToRootObj in self.settings.features:
@@ -1026,7 +1029,10 @@ proc genDeclTable(nodes: seq[Node]): Table[string, Node] =
 
 proc translate*(self; nodes: seq[Node], allowUndeclared = false): seq[TranslatedDeclAssembly] =
   var table = nodes.genDeclTable()
-  var finder = DepsFinder.init(allowUndeclared)
+  var finder = DepsFinder.init(
+    allowUndeclared, 
+    self.webidlContainsProcs
+  )
   let order = getInheritanceOrder(nodes, finder)
   self.deps = finder.deps
   for i in order:

@@ -370,6 +370,7 @@ macro translateTypesDsl*(name: untyped, body: untyped): untyped=
   var
     webidlIdentStrs = newNimNode(nnkBracket)
     webidlIdentsConds = seq[NimNode].default
+    nimIdents = newNimNode(nnkBracket)
 
   for i, (inNode, outNode) in nodes:
     var cond, body: NimNode
@@ -440,8 +441,9 @@ macro translateTypesDsl*(name: untyped, body: untyped): untyped=
       body = newNimNode(nnkStmtList).add quote do:
         `imports`.incl `importSeq`.toHashSet
       body.add outType
-
-
+    
+    if outNode.t.kind == nnkIdent:
+      nimIdents.add newStrLitNode(outNode.t.strVal)
 
     ifNode.add newNimNode(nnkElifBranch).add(cond, body)
   
@@ -497,6 +499,10 @@ macro translateTypesDsl*(name: untyped, body: untyped): untyped=
     
     func contains(_: type `name`): auto =
       `containsName`
+    
+    func usedNimIdents(_: type `name`): HashSet[string] =
+      const result = toHashSet(`nimIdents`)
+      result
 
   when defined(webidl2nim.debug):  
     echo r.repr

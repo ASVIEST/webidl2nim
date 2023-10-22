@@ -15,11 +15,17 @@ type
   DepsFinder* = ref object
     deps*: Table[string, DeclDeps[string]]
     skipUndeclared*: bool
+    containsProcs*: seq[proc (n: Node): bool {.noSideEffect.}]
 
-proc init*(_: type DepsFinder, skipUndeclared: bool = true): DepsFinder =
+proc init*(
+  _: type DepsFinder, 
+  skipUndeclared: bool = true, 
+  containsProcs: seq[proc (n: Node): bool {.noSideEffect.}] = @[]
+): auto =
   DepsFinder(
     deps: initTable[string, DeclDeps[string]](),
-    skipUndeclared: skipUndeclared
+    skipUndeclared: skipUndeclared,
+    containsProcs: containsProcs
   )
 
 using self: DepsFinder
@@ -61,8 +67,14 @@ proc setInheritance(deps: var DeclDeps[string], inheritance: Node)=
     else:
       some(inheritance.strVal)
 
-proc updateUsedTypes(node: Node, deps: var DeclDeps[string]) =
-  # deps.usedTypes[]
+proc updateUsedTypes(
+  node: Node, 
+  deps: var DeclDeps[string], 
+  containsProcs: seq[proc (n: Node): bool {.noSideEffect.}]
+) =
+  template updateUsedTypes(node: Node, deps: var DeclDeps[string]): untyped =
+    updateUsedTypes(node, deps, containsProcs)
+
   case node.kind:
     of Operation:
       let op =
@@ -103,8 +115,17 @@ proc updateUsedTypes(node: Node, deps: var DeclDeps[string]) =
       updateUsedTypes(node[1], deps)
 
     of Type:
-      if (let i = node.inner; i).kind == Ident and i.strVal notin keywordNames:
-        deps.usedTypes.incl i.strVal
+      if (let i = node.inner; i).kind == Ident:
+        block usedTypes:
+          if i.strVal in keywordNames:
+            break usedTypes
+
+          for contains in containsProcs:
+            if contains(i):
+              break usedTypes
+          
+          deps.usedTypes.incl i.strVal
+            
       else:
         for i in node.sons:
           updateUsedTypes(i, deps)
@@ -134,7 +155,11 @@ proc findInterfaceLikeDeps(self; node: Node, fromPartial = false)=
       1
 
   for i in node.sons[startIdx..^1]:
-    updateUsedTypes(i[0], self.deps[node[0].strVal])
+    updateUsedTypes(
+      i[0], 
+      self.deps[node[0].strVal], 
+      self.containsProcs
+    )
 
 proc findDeps*(self; node: Node)=
   case node.kind:
@@ -145,7 +170,11 @@ proc findDeps*(self; node: Node)=
       self.deps[node[0].strVal].mixinMembers &= node.sons[1..^1]
     of Typedef:
       self.tryInitDeps(node.name)
-      updateUsedTypes(node[1], self.deps[node[0].strVal])
+      updateUsedTypes(
+        node[1], 
+        self.deps[node[0].strVal], 
+        self.containsProcs
+      )
     of Enum:
       self.tryInitDeps(node.name)
     of Includes:
