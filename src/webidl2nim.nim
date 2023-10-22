@@ -1,6 +1,7 @@
 import webidl2nim/[lexer, parser, translator, unode, translate_types_dsl]
 
 export translator
+export translate_types_dsl
 export unode
 
 export parseCode
