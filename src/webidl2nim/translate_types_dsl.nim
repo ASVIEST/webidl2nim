@@ -457,15 +457,6 @@ macro translateTypesDsl*(name: untyped, body: untyped): untyped=
   )
 
   ifNode.add newNimNode(nnkElifBranch).add(
-    quote do: `t`.kind == Union,
-    quote do: `nestList`(
-      `ident`("or"), 
-      `t`.sons.mapIt(it.`procName`(`imports`)),
-      unkInfix
-    )
-  )
-
-  ifNode.add newNimNode(nnkElifBranch).add(
     quote do: `t`.kind == Generic,
     quote do:
       unode(unkBracketExpr)

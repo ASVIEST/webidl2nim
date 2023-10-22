@@ -241,12 +241,20 @@ proc importJs(self): auto =
   else:
     ident"importjs"
 
-proc toNimType*(self; n: Node): auto =
+proc toNimType*(self; n: Node): NimUNode =
+  let t = n.inner
+  if t.kind == Union:
+    return nestList(
+      ident"or", 
+      t.sons.mapIt(self.toNimType(it)),
+      unkInfix
+    )
+
   let 
     mapping = nimTypes.mapping
     contains = nimTypes.contains
 
-  if contains(n.inner):
+  if contains(t):
     return mapping(n, self.imports)
 
   for i in 0..self.typeMappings.high:
@@ -254,12 +262,13 @@ proc toNimType*(self; n: Node): auto =
       mapping = self.typeMappings[i]
       contains = self.webidlContainsProcs[i]
     
-    if contains(n.inner):
+    if contains(t):
       return mapping(n, self.imports)
 
   if n.inner.kind == Ident:
     ident(n.inner.strVal)
   else:
+    # TODO: make exception more informative
     raise newException(CatchableError, "Non ident defined type is not supported")
 
 proc translateIdentImpl(self; node: Node, capitalize: bool): auto =
