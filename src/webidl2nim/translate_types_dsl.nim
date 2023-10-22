@@ -370,6 +370,8 @@ macro translateTypesDsl*(name: untyped, body: untyped): untyped=
   var
     webidlIdentStrs = newNimNode(nnkBracket)
     webidlIdentsConds = seq[NimNode].default
+    webidlGenericStrs = newNimNode(nnkBracket)
+
     nimIdents = newNimNode(nnkBracket)
 
   for i, (inNode, outNode) in nodes:
@@ -406,6 +408,8 @@ macro translateTypesDsl*(name: untyped, body: untyped): untyped=
           newStrLitNode(outNode.t.strVal)
         )
       of Generic:
+        webidlGenericStrs.add newStrLitNode(inNode[0].strVal)
+
         (cond, body) =
           if changeDescs[inNode].after.len == 0:
             addGenericToIdentBranch(
@@ -473,7 +477,9 @@ macro translateTypesDsl*(name: untyped, body: untyped): untyped=
     raise newException(CatchableError, "Invalid webidl type")
   
   var containsConds = newNimNode(nnkBracket).add(
-    quote do: `n`.kind == Ident and `n`.strVal in `webidlIdentStrs`
+    quote do:
+      `n`.kind == Ident   and `n`.strVal in `webidlIdentStrs` or
+      `n`.kind == Generic and `n`[0].strVal in `webidlGenericStrs`
   )
   if webidlIdentsConds.len > 0:
     var webidlIdentsCond = newNimNode(nnkBracket).add webidlIdentsConds
