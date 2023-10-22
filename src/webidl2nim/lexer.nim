@@ -34,7 +34,8 @@ const
 
     intNorm: re2"-?[1-9][0-9]*",
     intOct:  re2"-?0[Xx][0-9A-Fa-f]+",
-    intHex:  re2"-?0[0-7]*"
+    intHex:  re2"-?0[0-7]*",
+    decimal: re2"-?(([0-9]+\.[0-9]*|[0-9]*\.[0-9]+)([Ee][+-]?[0-9]+)?|[0-9]+[Ee][+-]?[0-9]+)"
   )
 
 import options
@@ -85,6 +86,12 @@ proc tryParseIntLit(self: var Lexer; s: string): Option[int] =
   else:
     none(int)
 
+proc tryParseFloatLit(self: var Lexer; s: string): Option[float] =
+  if (let f = self.tryParseRegex(s, reTokens.decimal); f).isSome:
+    some(parseFloat(f.get))
+  else:
+    none(float)
+
 proc eatWhitespace(self: var Lexer; s: string): bool =
   for i in s[self.buffPos..^1]:
     if i in {'\t', '\n', '\r', ' '}:
@@ -105,6 +112,8 @@ iterator lex(self: var Lexer; s: string): Token =
       yield Token(kind: tIdentifier, strVal: s.get())
     elif (let s = self.tryParseRegex(s, reTokens.str); s).isSome:
       yield Token(kind: tString, strVal: s.get()[1..^2])
+    elif (let f = self.tryParseFloatLit(s); f).isSome:
+      yield Token(kind: tDecimal, floatVal: f.get())
     elif (let i = self.tryParseIntLit(s); i).isSome:
       yield Token(kind: tInteger, intVal: i.get())
     elif (let comment = self.tryParseRegex(s, reTokens.comment); comment).isSome:
