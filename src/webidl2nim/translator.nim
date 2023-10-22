@@ -203,13 +203,7 @@ translateTypesDsl nimTypes:
   EventTarget:
     `import` std/dom
 
-const
-  webidlNimIdents = [
-    "void", "string", "bool", "int8", "int16", "int32", "int64",
-    "byte", "uint16", "uint32", "uint64", "float32", "float64", "cstring",
-    "auto"
-  ]
-  sep = ", "
+const sep = ", "
 
 proc genImportJsMethodPattern(argsCnt: int, methodName = "$1"): string =
   var args = newStringOfCap(sep.len * (argsCnt-2))
@@ -286,8 +280,11 @@ proc translateType*(self; node: Node, typeDefKind: NimUNodeKind = unkEmpty): aut
 
   var nimType = self.toNimType(node)
 
-  if node.inner.kind != Ident or nimType.kind != unkIdent or nimType.strVal in webidlNimIdents:
-    return nimType
+  if (
+    node.inner.kind != Ident or 
+    nimType.kind != unkIdent or 
+    nimType.strVal in (self.additionalNimIdents + static nimTypes.usedNimIdents)
+  ): return nimType
 
   tryRemoveExportMarker self.settings.onIdent(
     nimType,
