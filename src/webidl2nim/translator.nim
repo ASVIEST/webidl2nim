@@ -92,7 +92,8 @@ proc assemble*(decls: openArray[TranslatedDeclAssembly], imports: HashSet[string
   var imports = unode(unkImportStmt).add imports.mapIt(ident(it))
 
   for i in decls:
-    typeSect.add i.declGenerated
+    if i.declGenerated != nil:
+      typeSect.add i.declGenerated
 
     for j in i.bindLets:
       letSect.add j
@@ -173,6 +174,10 @@ translateTypesDsl nimTypes:
     # ? maybe better to make switch
     `import` std/private/jsutils {.all.}
     -> ArrayBuffer
+  
+  Navigator:
+    `import` std/dom
+    -> Navigator
 
   sequence[_] -> seq[_]
   Promise[_]:
@@ -1028,13 +1033,19 @@ proc getInheritanceOrder*(nodes: seq[Node]; finder: var DepsFinder): seq[string]
 
 proc genDeclTable(nodes: seq[Node]): Table[string, Node] =
   for i in nodes:
+    # partial, includes adds to decl only if not found normal interface
     if i.kind in {Includes, Partial}:
       continue
+
     if i.kind == Empty:
       # dirty hack. Empty must be not in nodes
       continue
 
     result[i.name.strVal] = i
+  
+  for i in nodes:
+    if i.kind in {Includes, Partial} and i.name.strVal notin result:
+      result[i.name.strVal] = i
 
 proc translate*(self; nodes: seq[Node], allowUndeclared = false): seq[TranslatedDeclAssembly] =
   var table = nodes.genDeclTable()
@@ -1045,6 +1056,58 @@ proc translate*(self; nodes: seq[Node], allowUndeclared = false): seq[Translated
   let order = getInheritanceOrder(nodes, finder)
   self.deps = finder.deps
   for i in order:
+    if (
+      table[i].kind in {Includes, Partial} and
+      finder.containsProcs.anyIt(
+        it Node(kind: Ident, strVal: i)
+      )
+    ):
+      # type is already declared in nim so we need to add routines
+      # to complete webidl signature
+
+      case (let n = table[i]; n.kind):
+        of Partial:
+          # creates proc
+          var assembly = TranslatedDeclAssembly.default
+          let selfNode =
+            unode(unkIdentDefs).add(
+              ident"self",
+              self.translateType Node(
+                kind: Type, 
+                sons: @[n.inner[0]]
+              ),
+              empty()
+            )
+          case n.inner.kind:
+            of Interface:
+              for i in n.inner.sons[2..^1]:
+                case i.inner.kind:
+                  of Readonly:
+                    case i.inner.inner.kind:
+                      of Attribute:
+                        var attribute = i.inner.inner
+                        assembly.bindRoutines.add genRoutine(
+                          name = self.translateIdent attribute[0],
+                          returnType = self.translateType attribute[1],
+                          params = [selfNode],
+                          pragmas = pragma unode(unkExprColonExpr).add(
+                            self.importJs,
+                            strLit("#" & "." & attribute[0].strVal)
+                          ),
+                          routineType = unkProcDef
+                        ) 
+                      else:
+                        raise newException(CatchableError, "Unsuported std partial 3")
+                  else:
+                    raise newException(CatchableError, "Unsuported std partial " & $i.kind)
+
+            else:
+              raise newException(CatchableError, "Unsuported std partial 1")
+          result.add assembly
+        else:
+          discard
+      continue
+    
     if table[i].kind in {Includes, Mixin, Partial}:
       # no need to translate because it only changes exists defs
       continue
