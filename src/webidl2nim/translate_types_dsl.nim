@@ -467,11 +467,14 @@ macro translateTypesDsl*(name: untyped, body: untyped): untyped=
   ifNode.add newNimNode(nnkElse).add quote do: 
     raise newException(CatchableError, "Invalid webidl type")
   
-  var containsConds = newNimNode(nnkBracket).add(
-    quote do:
-      `n`.kind == Ident   and `n`.strVal in `webidlIdentStrs` or
+  var containsConds = newNimNode(nnkBracket).add:
+    quote:
+      `n`.kind == Ident and `n`.strVal in `webidlIdentStrs`
+
+  if webidlGenericStrs.len > 0:
+    containsConds.add quote do:
       `n`.kind == Generic and `n`[0].strVal in `webidlGenericStrs`
-  )
+
   if webidlIdentsConds.len > 0:
     var webidlIdentsCond = newNimNode(nnkBracket).add webidlIdentsConds
     webidlIdentsCond = nestList(ident"or", webidlIdentsCond)
