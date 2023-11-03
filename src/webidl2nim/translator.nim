@@ -1003,7 +1003,52 @@ proc translateEnum*(self; node: Node): TranslatedDeclAssembly =
     unode(unkEnumTy).add unode(unkStmtList).add(result.declFields)
   )
 
-# import ast_repr
+proc translateWithExtendInterface(self; node: Node): TranslatedDeclAssembly =
+  let selfNode =
+    unode(unkIdentDefs).add(
+      ident"self",
+      self.translateType Node(
+        kind: Type, 
+        sons: @[node.name]
+      ),
+      empty()
+    )
+  
+  for i in node.sons[2..^1]:
+    case (let i = i.inner; i).kind:
+      of Readonly:
+        case (let i = i.inner; i).kind:
+          of Attribute:
+            var attribute = i
+            result.bindRoutines.add genRoutine(
+              name = self.translateIdent attribute[0],
+              returnType = self.translateType attribute[1],
+              params = [selfNode],
+              pragmas = pragma unode(unkExprColonExpr).add(
+                self.importJs,
+                strLit("#" & "." & attribute[0].strVal)
+              ),
+              routineType = unkProcDef
+            )
+          else:
+            discard
+      else:
+        discard
+
+proc translateWithExtend(self; node: Node): TranslatedDeclAssembly =
+  assert node.kind in {Partial, Mixin}
+
+  case node.kind:
+    of Partial:
+      let node = node.inner
+      case node.kind:
+        of Interface:
+          result = self.translateWithExtendInterface(node)
+        else:
+          discard
+    else:
+      discard
+
 proc translate*(self; node: Node): TranslatedDeclAssembly =
   result = case node.kind:
     of Interface:
@@ -1051,10 +1096,11 @@ proc translate*(self; nodes: seq[Node], allowUndeclared = false): seq[Translated
   var table = nodes.genDeclTable()
   var finder = DepsFinder.init(
     allowUndeclared, 
-    self.webidlContainsProcs
+    self.webidlContainsProcs & nimTypes.contains
   )
   let order = getInheritanceOrder(nodes, finder)
   self.deps = finder.deps
+
   for i in order:
     if (
       table[i].kind in {Includes, Partial} and
@@ -1064,49 +1110,7 @@ proc translate*(self; nodes: seq[Node], allowUndeclared = false): seq[Translated
     ):
       # type is already declared in nim so we need to add routines
       # to complete webidl signature
-
-      case (let n = table[i]; n.kind):
-        of Partial:
-          # creates proc
-          var assembly = TranslatedDeclAssembly.default
-          let selfNode =
-            unode(unkIdentDefs).add(
-              ident"self",
-              self.translateType Node(
-                kind: Type, 
-                sons: @[n.inner[0]]
-              ),
-              empty()
-            )
-          case n.inner.kind:
-            of Interface:
-              for i in n.inner.sons[2..^1]:
-                case i.inner.kind:
-                  of Readonly:
-                    case i.inner.inner.kind:
-                      of Attribute:
-                        var attribute = i.inner.inner
-                        assembly.bindRoutines.add genRoutine(
-                          name = self.translateIdent attribute[0],
-                          returnType = self.translateType attribute[1],
-                          params = [selfNode],
-                          pragmas = pragma unode(unkExprColonExpr).add(
-                            self.importJs,
-                            strLit("#" & "." & attribute[0].strVal)
-                          ),
-                          routineType = unkProcDef
-                        ) 
-                      else:
-                        raise newException(CatchableError, "Unsuported std partial 3")
-                  else:
-                    raise newException(CatchableError, "Unsuported std partial " & $i.kind)
-
-            else:
-              raise newException(CatchableError, "Unsuported std partial 1")
-          result.add assembly
-        else:
-          discard
-      continue
+      result.add self.translateWithExtend(table[i])
     
     if table[i].kind in {Includes, Mixin, Partial}:
       # no need to translate because it only changes exists defs
