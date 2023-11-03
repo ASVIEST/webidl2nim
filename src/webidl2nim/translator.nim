@@ -1014,6 +1014,12 @@ proc translateWithExtendInterface(self; node: Node): TranslatedDeclAssembly =
       empty()
     )
   
+  template `*`(n: NimUNode): NimUNode =
+    if self.settings.exportCode:
+      unode(unkPostfix).add(ident"*", n)
+    else: n
+
+  
   for i in node.sons[2..^1]:
     case (let i = i.inner; i).kind:
       of Readonly:
@@ -1031,7 +1037,44 @@ proc translateWithExtendInterface(self; node: Node): TranslatedDeclAssembly =
               routineType = unkProcDef
             )
           else:
-            discard
+            raise newException(CatchableError):
+              "maplike or setlike can't be extend existing types"
+      of Attribute:
+        var attribute = i
+        let
+          attributeNimName = self.translateIdent(attribute[0])
+          attributeWebidlName = attribute[0]
+          attributeType = self.translateType attribute[1]
+
+        result.bindRoutines.add genRoutine(
+          name = attributeNimName,
+          returnType = attributeType,
+          params = [selfNode],
+          pragmas = pragma unode(unkExprColonExpr).add(
+            self.importJs,
+            strLit("#" & "." & attributeWebidlName.strVal)
+          ),
+          routineType = unkProcDef
+        )
+
+        result.bindRoutines.add genRoutine(
+          name = *unode(unkAccQuoted).add(
+            ident(attributeNimName.tryRemoveExportMarker.strVal & "=")
+          ),
+          params = [
+            selfNode, 
+            unode(unkIdentDefs).add(
+              ident"val",
+              attributeType,
+              empty()
+            )
+            ],
+          pragmas = pragma unode(unkExprColonExpr).add(
+            self.importJs,
+            strLit("#" & "." & attributeWebidlName.strVal & " = #")
+          ),
+          routineType = unkProcDef
+        )
       else:
         discard
 
