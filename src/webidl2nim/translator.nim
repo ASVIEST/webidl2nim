@@ -1002,6 +1002,28 @@ proc translateEnum*(self; node: Node): TranslatedDeclAssembly =
     result.decl,
     unode(unkEnumTy).add unode(unkStmtList).add(result.declFields)
   )
+proc translateCallbackFunction*(self; node, name: Node): TranslatedDeclAssembly =
+  var curAssembly = TranslatedDeclAssembly.default
+  self.translateOperation(curAssembly, node)
+  var procs: seq[NimUNode] = @[]
+  for i in curAssembly.bindRoutines:
+    procs.add i.toLambda
+  
+  result.decl = self.translateDeclIdent name
+  result.declGenerated = genAlias(
+    result.decl,
+    nestList(ident"or", procs, unkInfix)
+  )
+
+proc translateCallback*(self; node: Node): TranslatedDeclAssembly =
+  assert node.kind == Callback
+
+  case (let i = node[1]; i).kind:
+    of Operation:
+      result = self.translateCallbackFunction(i, node.name)
+    else:
+      raise newException(CatchableError):
+        "Invalid callback"
 
 proc translateWithExtendInterface(self; node: Node): TranslatedDeclAssembly =
   let selfNode =
@@ -1104,6 +1126,8 @@ proc translate*(self; node: Node): TranslatedDeclAssembly =
       self.translateTypedef(node)
     of Enum:
       self.translateEnum(node)
+    of Callback:
+      self.translateCallback(node)
     else:
       raise newException(CatchableError, "Invalid decl:  " & $node)
 

@@ -674,11 +674,10 @@ grammar callback:
   Callback <- [tCallback] * CallbackRest#CallbackRestOrInterface
 
   CallbackRestOrInterface <- CallbackRest
-  CallbackRest <- >[tIdentifier] * [tAssign] * types.Type * [tLPar] * arguments.ArgumentList * [tRPar] * [tSemiColon]:#operations.RegularOperation:
+  CallbackRest <- >[tIdentifier] * [tAssign] * types.Type * [tLPar] * arguments.ArgumentList * [tRPar] * [tSemiColon]:
     let
       args = p.pop()
       t    = p.pop()
-    
     capture callback(
       ident ($1).strVal,
       operation regularOperation(empty(), t, args)

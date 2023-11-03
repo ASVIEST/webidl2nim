@@ -195,6 +195,13 @@ proc findDeps*(self; node: Node)=
       self.deps[node.inner[0].strVal].partialMembers &=
         node.inner.sons[membersStartIdx..^1]
       # print self.deps[node.inner[0].strVal]
+    of Callback:
+      case (let i = node[1]; i).kind:
+        of Operation:
+          self.tryInitDeps(node.name)
+          updateUsedTypes(i, self.deps[node.name.strVal], self.containsProcs)
+        else:
+          discard
     else:
       discard
 

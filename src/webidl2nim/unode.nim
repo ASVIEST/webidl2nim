@@ -207,6 +207,18 @@ proc expectKind*(n: NimUNode; k: set[NimUNodeKind]) =
 proc withPragma*(n: NimUNode, pragma: NimUNode): NimUNode =
   unode(unkPragmaExpr).add(n, pragma)
 
+proc toLambda*(n: NimUNode): NimUNode =
+  n.expectKind({unkProcDef})
+  assert:
+    n[0].kind == unkEmpty and
+    n[1].kind == unkEmpty and
+    n[2].kind == unkEmpty
+  
+  unode(unkProcTy).add(
+    n[3],
+    n[4]
+  )
+
 
 proc tryRemoveExportMarker*(n: NimUNode): NimUNode =
   #TODO: make it with full tree visit via stack
