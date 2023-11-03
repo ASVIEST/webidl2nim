@@ -352,7 +352,7 @@ proc translateVal(self; node: Node): auto =
 
 proc translateIdentDefs(self; node: Node): auto =
   assert node.kind == IdentDefs
-  const anyStr = ["ByteString", "DOMString", "USVString"]
+  const anyStr = @["ByteString", "DOMString", "USVString"]
 
   let
     name    = node[0]
@@ -366,11 +366,24 @@ proc translateIdentDefs(self; node: Node): auto =
       #? maybe need to raise exception if t is not enum ?
       tryRemoveExportMarker:
         self.translateDeclIdent Node(kind: Ident, strVal: default.strVal)
-    elif default.kind in {IntLit, Ident} and t.inner.kind == Ident and t.inner.strVal notin anyStr:
+    elif (
+      default.kind in {IntLit, Ident} and 
+      t.inner.kind == Ident and 
+      t.inner.strVal notin (anyStr & @["long", "short"])
+    ):
       #? maybe need to raise exception if t is not distinct ?
       unode(unkCall).add(
         self.translateType t,
         self.translateVal default
+      )
+    elif (
+      default.kind == IntLit and
+      (let nimT = self.translateType(t); nimT).kind == unkIdent and
+      nimT.strVal != "int"
+    ):
+      unode(unkDotExpr).add(
+        self.translateVal default,
+        nimT
       )
     else:
       self.translateVal default
