@@ -90,7 +90,7 @@ when isMainModule:
 
     else:
       for path in walkPattern(inputFile):
-        let f = open(inputFile)
+        let f = open(path)
         s.add readAll(f)
         f.close()
     
